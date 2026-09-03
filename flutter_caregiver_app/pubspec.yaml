@@ -1,0 +1,32 @@
+name: caregiver_dashboard
+description: SIH 2026 AI-Based Cognitive Gaming & Memory Assistance Platform - Caregiver Dashboard
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  # Modern Material Design & Icons
+  cupertino_icons: ^1.0.6
+  google_fonts: ^6.1.0
+  intl: ^0.19.0
+  fl_chart: ^0.66.2
+  
+  # Firebase Readiness (uncomment when Firebase config is added)
+  # firebase_core: ^2.27.0
+  # cloud_firestore: ^4.15.8
+  # firebase_auth: ^4.17.8
+  
+  # Google Maps integration ready
+  # google_maps_flutter: ^2.5.3
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+
+flutter:
+  uses-material-design: true

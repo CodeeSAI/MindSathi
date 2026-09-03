@@ -1,0 +1,848 @@
+import { useEffect, useRef, useState } from "react";
+import { addDoc, collection, serverTimestamp } from "firebase/firestore";
+import { auth, db } from "../firebase";
+
+// ─── Types ───────────────────────────────────────────────────────────────────
+type Screen =
+  | "patient-home" | "brain-quest" | "memory-match"
+  | "daily-puzzle" | "memory-garden" | "reminders" | "voice-assistant"
+  | "patient-profile";
+
+// ─── Shared Components ────────────────────────────────────────────────────────
+function StatusBar() {
+  return (
+    <div className="flex items-center justify-between px-6 pt-3 pb-1 text-xs font-semibold text-[#37474F]">
+      <span>9:41</span>
+      <div className="flex gap-1 items-center">
+        <span>●●●</span>
+        <span>WiFi</span>
+        <span>🔋</span>
+      </div>
+    </div>
+  );
+}
+
+function BottomNav({ active, onNav }: { active: string; onNav: (s: Screen) => void }) {
+  const items = [
+    { icon: "🏠", label: "Home", screen: "patient-home" as Screen },
+    { icon: "🎮", label: "Games", screen: "memory-match" as Screen },
+    { icon: "🌱", label: "Garden", screen: "memory-garden" as Screen },
+    { icon: "⏰", label: "Reminders", screen: "reminders" as Screen },
+    { icon: "👤", label: "Profile", screen: "patient-profile" as Screen },
+  ];
+  return (
+    <div className="flex bg-white border-t border-[#D9F4F1] pb-5 pt-2 px-2">
+      {items.map(item => (
+        <button
+          key={item.screen}
+          onClick={() => onNav(item.screen)}
+          className={`flex-1 flex flex-col items-center gap-1 py-1 rounded-xl transition-all ${active === item.screen ? "text-[#2E7D73]" : "text-[#90A4AE]"}`}
+        >
+          <span className="text-2xl">{item.icon}</span>
+          <span className={`text-[10px] font-semibold ${active === item.screen ? "text-[#2E7D73]" : "text-[#90A4AE]"}`}>{item.label}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function BackButton({ onBack, light = false }: { onBack: () => void; light?: boolean }) {
+  return (
+    <button onClick={onBack} className={`w-10 h-10 rounded-full flex items-center justify-center ${light ? "bg-white/20" : "bg-white shadow-sm"}`}>
+      <span className={light ? "text-white text-xl" : "text-[#37474F] text-xl"}>←</span>
+    </button>
+  );
+}
+
+// ─── Patient Home ─────────────────────────────────────────────────────────────
+function PatientHome({ onNav }: { onNav: (s: Screen) => void }) {
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
+  const [stars] = useState(127);
+  const [streak] = useState(7);
+
+  return (
+    <div className="h-full flex flex-col bg-[#F8FAFB] overflow-y-auto">
+      <StatusBar />
+      {/* Header */}
+      <div className="px-5 pt-2 pb-4 bg-gradient-to-br from-[#2E7D73] to-[#1A5C54] rounded-b-[32px] shadow-md">
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <p className="text-[#A8DADB] text-sm font-medium">{greeting},</p>
+            <h1 className="text-3xl font-extrabold text-white leading-tight">Ravi! 👋</h1>
+            <p className="text-[#D9F4F1] text-sm mt-0.5">Ready for today's little adventure?</p>
+          </div>
+          <button onClick={() => onNav("patient-profile")} className="w-14 h-14 rounded-full bg-[#D9F4F1] flex items-center justify-center shadow">
+            <span className="text-3xl">👴</span>
+          </button>
+        </div>
+        {/* Stats row */}
+        <div className="flex gap-3 mt-2">
+          <div className="flex-1 bg-white/15 rounded-2xl px-4 py-3 flex items-center gap-2">
+            <span className="text-2xl">⭐</span>
+            <div>
+              <p className="text-white font-bold text-lg leading-none">{stars}</p>
+              <p className="text-[#D9F4F1] text-xs">Stars</p>
+            </div>
+          </div>
+          <div className="flex-1 bg-white/15 rounded-2xl px-4 py-3 flex items-center gap-2">
+            <span className="text-2xl">🔥</span>
+            <div>
+              <p className="text-white font-bold text-lg leading-none">{streak} days</p>
+              <p className="text-[#D9F4F1] text-xs">Streak</p>
+            </div>
+          </div>
+          <div className="flex-1 bg-white/15 rounded-2xl px-4 py-3 flex items-center gap-2">
+            <span className="text-2xl">🏅</span>
+            <div>
+              <p className="text-white font-bold text-lg leading-none">5</p>
+              <p className="text-[#D9F4F1] text-xs">Badges</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="px-5 pt-5 pb-4 flex flex-col gap-4">
+        {/* Daily Brain Quest */}
+        <button onClick={() => onNav("brain-quest")} className="w-full bg-gradient-to-r from-[#7E57C2] to-[#9575CD] rounded-3xl p-5 shadow-md text-left animate-fade-in">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-purple-100 text-sm font-semibold">✨ Today's Quest</p>
+              <h2 className="text-white text-xl font-extrabold mt-1">Daily Brain Quest</h2>
+              <p className="text-purple-100 text-sm mt-1">3 fun activities • 15 min</p>
+            </div>
+            <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center">
+              <span className="text-4xl">🧠</span>
+            </div>
+          </div>
+          <div className="mt-4 bg-white/20 rounded-full h-2.5">
+            <div className="bg-white rounded-full h-2.5 w-1/3" />
+          </div>
+          <p className="text-purple-100 text-xs mt-1.5">1 of 3 completed</p>
+        </button>
+
+        {/* Upcoming Reminder */}
+        <div className="bg-[#FEF3C7] border border-[#F59E0B]/30 rounded-3xl px-5 py-4 flex items-center gap-4">
+          <div className="w-12 h-12 bg-[#F59E0B] rounded-2xl flex items-center justify-center shadow-sm">
+            <span className="text-2xl">💊</span>
+          </div>
+          <div className="flex-1">
+            <p className="text-[#92400E] font-bold text-base">Morning Medication</p>
+            <p className="text-[#B45309] text-sm">In 15 minutes • 9:00 AM</p>
+          </div>
+          <button onClick={() => onNav("reminders")} className="text-[#F59E0B] font-bold text-sm bg-white rounded-xl px-3 py-2 shadow-sm">View</button>
+        </div>
+
+        {/* Games section */}
+        <div>
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-[#37474F] text-lg font-extrabold">Today's Games</h3>
+            <span className="text-[#78909C] text-sm font-medium">See all</span>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <button onClick={() => onNav("memory-match")} className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100 flex flex-col items-center gap-2 active:scale-95 transition-transform">
+              <div className="w-14 h-14 bg-[#EDE7F6] rounded-2xl flex items-center justify-center">
+                <span className="text-3xl">🃏</span>
+              </div>
+              <p className="text-[#37474F] font-bold text-sm text-center">Memory Match</p>
+              <div className="flex gap-1">
+                {[1,2,3].map(s => <span key={s} className="text-[#F59E0B] text-xs">⭐</span>)}
+              </div>
+            </button>
+            <button onClick={() => onNav("daily-puzzle")} className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100 flex flex-col items-center gap-2 active:scale-95 transition-transform">
+              <div className="w-14 h-14 bg-[#E8F5E9] rounded-2xl flex items-center justify-center">
+                <span className="text-3xl">🧩</span>
+              </div>
+              <p className="text-[#37474F] font-bold text-sm text-center">Daily Puzzle</p>
+              <div className="flex gap-1">
+                {[1,2].map(s => <span key={s} className="text-[#F59E0B] text-xs">⭐</span>)}
+                <span className="text-gray-200 text-xs">⭐</span>
+              </div>
+            </button>
+          </div>
+        </div>
+
+        {/* Memory Garden */}
+        <button onClick={() => onNav("memory-garden")} className="w-full bg-gradient-to-r from-[#43A047] to-[#388E3C] rounded-3xl p-5 shadow-md text-left active:scale-95 transition-transform">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-green-100 text-sm font-semibold">🌱 Grow & Remember</p>
+              <h3 className="text-white text-xl font-extrabold mt-1">Memory Garden</h3>
+              <p className="text-green-100 text-sm mt-1">5 plants growing</p>
+            </div>
+            <div className="flex gap-1">
+              <span className="text-3xl animate-bounce-gentle">🌸</span>
+              <span className="text-3xl animate-bounce-gentle" style={{animationDelay:"0.3s"}}>🌺</span>
+              <span className="text-2xl animate-bounce-gentle" style={{animationDelay:"0.6s"}}>🌿</span>
+            </div>
+          </div>
+        </button>
+
+        {/* Big action buttons */}
+        <div className="grid grid-cols-2 gap-3">
+          <button onClick={() => onNav("voice-assistant")} className="bg-[#D9F4F1] border-2 border-[#2E7D73]/20 rounded-3xl py-5 flex flex-col items-center gap-2 active:scale-95 transition-transform shadow-sm">
+            <div className="w-14 h-14 bg-[#2E7D73] rounded-full flex items-center justify-center shadow-md relative">
+              <div className="absolute inset-0 rounded-full bg-[#2E7D73] animate-ping opacity-20" />
+              <span className="text-3xl">🎤</span>
+            </div>
+            <p className="text-[#2E7D73] font-extrabold text-base">Voice Help</p>
+          </button>
+          <button className="bg-[#FFEBEE] border-2 border-[#E53935]/20 rounded-3xl py-5 flex flex-col items-center gap-2 active:scale-95 transition-transform shadow-sm">
+            <div className="w-14 h-14 bg-[#E53935] rounded-full flex items-center justify-center shadow-md">
+              <span className="text-3xl">🆘</span>
+            </div>
+            <p className="text-[#E53935] font-extrabold text-base">SOS Help</p>
+          </button>
+        </div>
+
+        <div className="h-4" />
+      </div>
+    </div>
+  );
+}
+
+// ─── Brain Quest ──────────────────────────────────────────────────────────────
+function BrainQuest({ onBack }: { onBack: () => void }) {
+  const [step, setStep] = useState(0);
+  const [done, setDone] = useState(false);
+  const questions = [
+    { q: "What day is it today?", options: ["Monday", "Tuesday", "Wednesday", "Thursday"], answer: new Date().toLocaleDateString("en-US",{weekday:"long"}).split(",")[0] },
+    { q: "Who is this person?", options: ["Your daughter Priya", "A nurse", "A neighbor", "A friend"], answer: "Your daughter Priya" },
+    { q: "What did you have for breakfast?", options: ["Idli & Sambar", "Bread & Butter", "Oats", "Poha"], answer: "Idli & Sambar" },
+  ];
+  const [selected, setSelected] = useState<string | null>(null);
+  const [showResult, setShowResult] = useState(false);
+
+  const handleSelect = (opt: string) => {
+    setSelected(opt);
+    setShowResult(true);
+    setTimeout(() => {
+      if (step < questions.length - 1) {
+        setStep(s => s + 1);
+        setSelected(null);
+        setShowResult(false);
+      } else {
+        setDone(true);
+      }
+    }, 1200);
+  };
+
+  if (done) return (
+    <div className="h-full flex flex-col bg-[#F8FAFB]">
+      <StatusBar />
+      <div className="flex-1 flex flex-col items-center justify-center px-6 gap-6 animate-fade-in">
+        <div className="text-8xl animate-bounce-gentle">🏆</div>
+        <div className="text-center">
+          <h2 className="text-3xl font-extrabold text-[#37474F]">Wonderful!</h2>
+          <p className="text-[#78909C] text-lg mt-2">You completed today's Brain Quest!</p>
+          <div className="flex justify-center gap-2 mt-4">
+            {[1,2,3].map(s => <span key={s} className="text-4xl animate-grow">⭐</span>)}
+          </div>
+          <div className="bg-[#E8F5E9] rounded-2xl px-6 py-3 mt-4">
+            <p className="text-[#43A047] font-bold text-lg">+30 Stars Earned!</p>
+          </div>
+        </div>
+        <button onClick={onBack} className="w-full py-5 bg-[#2E7D73] text-white text-xl font-bold rounded-2xl shadow-md">Back to Home</button>
+      </div>
+    </div>
+  );
+
+  const q = questions[step];
+  return (
+    <div className="h-full flex flex-col bg-[#F8FAFB]">
+      <StatusBar />
+      <div className="bg-gradient-to-br from-[#7E57C2] to-[#512DA8] px-5 pt-2 pb-6 rounded-b-[32px]">
+        <div className="flex items-center gap-3 mb-4">
+          <BackButton onBack={onBack} light />
+          <div>
+            <h2 className="text-white text-xl font-extrabold">Daily Brain Quest</h2>
+            <p className="text-purple-200 text-sm">Question {step+1} of {questions.length}</p>
+          </div>
+        </div>
+        <div className="bg-white/20 rounded-full h-2.5">
+          <div className="bg-white rounded-full h-2.5 transition-all duration-500" style={{width: `${((step)/questions.length)*100}%`}} />
+        </div>
+      </div>
+
+      <div className="flex-1 px-5 pt-6 flex flex-col gap-5 animate-fade-in">
+        {step === 1 && (
+          <div className="w-28 h-28 rounded-3xl bg-[#D9F4F1] mx-auto flex items-center justify-center shadow-md">
+            <span className="text-7xl">👧</span>
+          </div>
+        )}
+        <div className="bg-white rounded-3xl p-6 shadow-sm border border-gray-100">
+          <p className="text-[#37474F] text-2xl font-extrabold text-center leading-snug">{q.q}</p>
+        </div>
+        <div className="flex flex-col gap-3">
+          {q.options.map(opt => (
+            <button
+              key={opt}
+              onClick={() => !showResult && handleSelect(opt)}
+              className={`w-full py-5 px-6 rounded-2xl text-lg font-bold transition-all text-left border-2 ${
+                showResult && opt === q.answer ? "bg-[#E8F5E9] border-[#43A047] text-[#43A047]" :
+                showResult && opt === selected && opt !== q.answer ? "bg-[#FFEBEE] border-[#E53935] text-[#E53935]" :
+                "bg-white border-gray-100 text-[#37474F] active:scale-95"
+              }`}
+            >
+              {showResult && opt === q.answer ? "✅ " : showResult && opt === selected ? "❌ " : ""}{opt}
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Memory Match ─────────────────────────────────────────────────────────────
+const EMOJIS = ["🌸","🦋","🌈","🐶","🏡","☕","🎵","🌻"];
+function MemoryMatch({ onBack }: { onBack: () => void }) {
+  const [cards] = useState(() => {
+    const pairs = [...EMOJIS, ...EMOJIS];
+    return pairs.sort(() => Math.random()-0.5).map((e,i) => ({id:i, emoji:e, flipped:false, matched:false}));
+  });
+  const [state, setState] = useState(cards);
+  const [first, setFirst] = useState<number|null>(null);
+  const [second, setSecond] = useState<number|null>(null);
+  const [locked, setLocked] = useState(false);
+  const [moves, setMoves] = useState(0);
+  const matched = state.filter(c => c.matched).length;
+
+  const flip = (id: number) => {
+    if (locked || state[id].flipped || state[id].matched) return;
+    const next = state.map((c,i) => i===id ? {...c, flipped:true} : c);
+    setState(next);
+    if (first === null) { setFirst(id); return; }
+    setSecond(id);
+    setMoves(m => m+1);
+    setLocked(true);
+    setTimeout(() => {
+      setState(prev => {
+        const isMatch = prev[first!].emoji === prev[id].emoji;
+        return prev.map((c,i) => i===first || i===id ? {...c, matched:isMatch, flipped:isMatch?true:false} : c);
+      });
+      setFirst(null); setSecond(null); setLocked(false);
+    }, 900);
+  };
+
+  const allMatched = matched === state.length;
+  const resultSaved = useRef(false);
+
+useEffect(() => {
+  if (!allMatched || resultSaved.current) return;
+
+  const user = auth.currentUser;
+
+  if (!user) {
+    console.error("No authenticated patient found.");
+    return;
+  }
+
+  resultSaved.current = true;
+
+  addDoc(
+    collection(db, "patients", user.uid, "gameResults"),
+    {
+      gameName: "Memory Match",
+      score: 20,
+      moves,
+      starsEarned: 20,
+      completedAt: serverTimestamp(),
+    }
+  ).catch((error) => {
+    console.error("Failed to save Memory Match result:", error);
+    resultSaved.current = false;
+  });
+}, [allMatched, moves]);
+
+  return (
+    <div className="h-full flex flex-col bg-[#F8FAFB]">
+      <StatusBar />
+      <div className="bg-gradient-to-br from-[#7E57C2] to-[#512DA8] px-5 pt-2 pb-5 rounded-b-[32px]">
+        <div className="flex items-center gap-3 mb-3">
+          <BackButton onBack={onBack} light />
+          <h2 className="text-white text-xl font-extrabold">Memory Match</h2>
+        </div>
+        <div className="flex gap-3">
+          <div className="flex-1 bg-white/20 rounded-2xl py-3 text-center">
+            <p className="text-purple-100 text-xs">Pairs Found</p>
+            <p className="text-white text-2xl font-extrabold">{matched/2}</p>
+          </div>
+          <div className="flex-1 bg-white/20 rounded-2xl py-3 text-center">
+            <p className="text-purple-100 text-xs">Moves</p>
+            <p className="text-white text-2xl font-extrabold">{moves}</p>
+          </div>
+        </div>
+      </div>
+      {allMatched ? (
+        <div className="flex-1 flex flex-col items-center justify-center px-6 gap-5">
+          <span className="text-7xl animate-bounce-gentle">🎉</span>
+          <h2 className="text-3xl font-extrabold text-[#37474F]">Great job!</h2>
+          <p className="text-[#78909C] text-lg text-center">You matched all the pairs in {moves} moves!</p>
+          <div className="bg-[#E8F5E9] rounded-2xl px-6 py-3">
+            <p className="text-[#43A047] font-bold text-lg">+20 Stars Earned! ⭐</p>
+          </div>
+          <button onClick={onBack} className="w-full py-5 bg-[#7E57C2] text-white text-xl font-bold rounded-2xl">Back to Home</button>
+        </div>
+      ) : (
+        <div className="flex-1 px-4 pt-5 grid grid-cols-4 gap-3 content-start">
+          {state.map((card) => (
+            <button
+              key={card.id}
+              onClick={() => flip(card.id)}
+              className={`aspect-square rounded-2xl flex items-center justify-center text-3xl font-bold transition-all duration-300 shadow-sm ${
+                card.flipped || card.matched
+                  ? card.matched ? "bg-[#E8F5E9] scale-95" : "bg-[#EDE7F6]"
+                  : "bg-white border-2 border-[#D9F4F1] active:scale-95"
+              }`}
+            >
+              {card.flipped || card.matched ? card.emoji : <span className="text-[#D9F4F1] text-2xl">?</span>}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Daily Puzzle ─────────────────────────────────────────────────────────────
+function DailyPuzzle({ onBack }: { onBack: () => void }) {
+  const [phase, setPhase] = useState(0);
+  const sequence = ["🌅", "☕", "🛁", "👕", "🍽️"];
+  const [userSeq, setUserSeq] = useState<string[]>([]);
+  const [shuffled] = useState(() => [...sequence].sort(() => Math.random()-0.5));
+
+  const add = (e: string) => {
+    if (userSeq.includes(e)) return;
+    const next = [...userSeq, e];
+    setUserSeq(next);
+    if (next.length === sequence.length) {
+      setTimeout(() => setPhase(1), 600);
+    }
+  };
+
+  return (
+    <div className="h-full flex flex-col bg-[#F8FAFB]">
+      <StatusBar />
+      <div className="bg-gradient-to-br from-[#43A047] to-[#2E7D32] px-5 pt-2 pb-5 rounded-b-[32px]">
+        <div className="flex items-center gap-3">
+          <BackButton onBack={onBack} light />
+          <div>
+            <h2 className="text-white text-xl font-extrabold">Daily Puzzle</h2>
+            <p className="text-green-100 text-sm">Put the morning routine in order</p>
+          </div>
+        </div>
+      </div>
+      {phase === 0 ? (
+        <div className="flex-1 px-5 pt-6 flex flex-col gap-6">
+          <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100">
+            <p className="text-[#78909C] text-sm font-semibold mb-3">Build the sequence:</p>
+            <div className="flex gap-2 min-h-16 items-center flex-wrap">
+              {userSeq.length === 0 ? (
+                <p className="text-[#B0BEC5] text-base italic">Tap items below...</p>
+              ) : userSeq.map((e,i) => (
+                <div key={i} className="w-12 h-12 bg-[#E8F5E9] rounded-2xl flex items-center justify-center text-2xl">
+                  {e}
+                </div>
+              ))}
+            </div>
+          </div>
+          <p className="text-[#37474F] font-bold text-base text-center">What do you do in the morning?</p>
+          <div className="grid grid-cols-3 gap-3">
+            {shuffled.map(e => (
+              <button
+                key={e}
+                onClick={() => add(e)}
+                className={`aspect-square rounded-3xl text-4xl flex items-center justify-center shadow-sm border-2 transition-all ${
+                  userSeq.includes(e) ? "bg-[#E8F5E9] border-[#43A047] opacity-50" : "bg-white border-gray-100 active:scale-95"
+                }`}
+              >
+                {e}
+              </button>
+            ))}
+          </div>
+          {userSeq.length > 0 && (
+            <button onClick={() => setUserSeq([])} className="text-[#78909C] text-sm font-semibold underline text-center">Reset</button>
+          )}
+        </div>
+      ) : (
+        <div className="flex-1 flex flex-col items-center justify-center px-6 gap-5">
+          <span className="text-7xl animate-bounce-gentle">🌟</span>
+          <h2 className="text-3xl font-extrabold text-[#37474F]">Wonderful!</h2>
+          <p className="text-[#78909C] text-lg text-center">You got the morning routine right!</p>
+          <div className="bg-[#E8F5E9] rounded-2xl px-6 py-3"><p className="text-[#43A047] font-bold text-lg">+25 Stars! ⭐</p></div>
+          <button onClick={onBack} className="w-full py-5 bg-[#43A047] text-white text-xl font-bold rounded-2xl">Back to Home</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Memory Garden ────────────────────────────────────────────────────────────
+const PLANTS = [
+  { emoji: "🌸", name: "Cherry Blossom", memory: "Your favorite childhood tree", stage: 3 },
+  { emoji: "🌺", name: "Hibiscus", memory: "From your grandmother's garden", stage: 2 },
+  { emoji: "🌻", name: "Sunflower", memory: "Your daughter Priya loves these", stage: 3 },
+  { emoji: "🌿", name: "Tulsi", memory: "From your home in Pune", stage: 1 },
+  { emoji: "🪷", name: "Lotus", memory: "Festival memories", stage: 2 },
+];
+
+function MemoryGarden({ onBack }: { onBack: () => void }) {
+  const [selected, setSelected] = useState<typeof PLANTS[0]|null>(null);
+
+  return (
+    <div className="h-full flex flex-col bg-[#F8FAFB]">
+      <StatusBar />
+      <div className="bg-gradient-to-br from-[#43A047] to-[#1B5E20] px-5 pt-2 pb-6 rounded-b-[32px]">
+        <div className="flex items-center gap-3 mb-3">
+          <BackButton onBack={onBack} light />
+          <div>
+            <h2 className="text-white text-xl font-extrabold">Memory Garden</h2>
+            <p className="text-green-100 text-sm">Each plant holds a memory 🌱</p>
+          </div>
+        </div>
+        <div className="flex gap-3">
+          <div className="flex-1 bg-white/20 rounded-2xl py-3 text-center">
+            <p className="text-green-100 text-xs">Plants</p>
+            <p className="text-white text-2xl font-extrabold">5</p>
+          </div>
+          <div className="flex-1 bg-white/20 rounded-2xl py-3 text-center">
+            <p className="text-green-100 text-xs">Memories</p>
+            <p className="text-white text-2xl font-extrabold">12</p>
+          </div>
+          <div className="flex-1 bg-white/20 rounded-2xl py-3 text-center">
+            <p className="text-green-100 text-xs">Water</p>
+            <p className="text-white text-2xl font-extrabold">💧×3</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex-1 px-5 pt-5 overflow-y-auto">
+        {selected ? (
+          <div className="animate-fade-in">
+            <button onClick={() => setSelected(null)} className="text-[#2E7D73] font-semibold mb-4 flex items-center gap-2">← Back to Garden</button>
+            <div className="bg-white rounded-3xl p-6 shadow-sm border border-gray-100 text-center">
+              <div className="text-8xl mb-3">{selected.emoji}</div>
+              <h3 className="text-2xl font-extrabold text-[#37474F]">{selected.name}</h3>
+              <div className="flex justify-center gap-1 my-3">
+                {[1,2,3].map(s => (
+                  <div key={s} className={`w-4 h-4 rounded-full ${s <= selected.stage ? "bg-[#43A047]" : "bg-gray-100"}`} />
+                ))}
+              </div>
+              <div className="bg-[#F0FDF4] rounded-2xl p-4 mt-3">
+                <p className="text-sm text-[#78909C] font-semibold mb-1">Memory attached:</p>
+                <p className="text-[#37474F] text-lg font-medium italic">"{selected.memory}"</p>
+              </div>
+              <button className="w-full mt-4 py-4 bg-[#43A047] text-white font-bold text-lg rounded-2xl">
+                💧 Water Plant
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-4 pb-6">
+            {PLANTS.map((plant, i) => (
+              <button
+                key={i}
+                onClick={() => setSelected(plant)}
+                className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100 flex flex-col items-center gap-2 active:scale-95 transition-transform"
+              >
+                <div className={`text-5xl ${i===0 || i===2 ? "animate-bounce-gentle" : ""}`}>{plant.emoji}</div>
+                <p className="text-[#37474F] font-bold text-sm text-center">{plant.name}</p>
+                <div className="flex gap-1">
+                  {[1,2,3].map(s => (
+                    <div key={s} className={`w-3 h-3 rounded-full ${s <= plant.stage ? "bg-[#43A047]" : "bg-gray-100"}`} />
+                  ))}
+                </div>
+              </button>
+            ))}
+            <button className="bg-[#F0FDF4] border-2 border-dashed border-[#43A047]/40 rounded-3xl p-5 flex flex-col items-center gap-2 active:scale-95 transition-transform">
+              <div className="w-14 h-14 bg-[#E8F5E9] rounded-full flex items-center justify-center">
+                <span className="text-3xl text-[#43A047]">+</span>
+              </div>
+              <p className="text-[#43A047] font-bold text-sm text-center">Add Plant</p>
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Reminders ────────────────────────────────────────────────────────────────
+const REMINDERS = [
+  { time: "8:00 AM", label: "Morning Walk", icon: "🚶", done: true, color: "#43A047" },
+  { time: "9:00 AM", label: "Take Medication", icon: "💊", done: true, color: "#F59E0B" },
+  { time: "11:00 AM", label: "Call Priya", icon: "📞", done: false, color: "#2E7D73" },
+  { time: "1:00 PM", label: "Lunch", icon: "🍱", done: false, color: "#7E57C2" },
+  { time: "4:00 PM", label: "Evening Snack", icon: "🍎", done: false, color: "#F59E0B" },
+  { time: "8:00 PM", label: "Night Medication", icon: "💊", done: false, color: "#F59E0B" },
+];
+
+function Reminders({ onBack }: { onBack: () => void }) {
+  const [done, setDone] = useState<boolean[]>(REMINDERS.map(r => r.done));
+  useEffect(() => {
+  const loadReminders = async () => {
+    const user = auth.currentUser;
+
+    if (!user) return;
+
+    try {
+      const reminderDoc = await getDocs(
+        collection(db, "patients", user.uid, "reminders")
+      );
+
+      const todayDoc = reminderDoc.docs.find(
+        (item) => item.id === "today"
+      );
+
+      if (todayDoc) {
+        const savedDone = todayDoc.data().done;
+
+        if (Array.isArray(savedDone)) {
+          setDone(savedDone);
+        }
+      }
+    } catch (error) {
+      console.error("Failed to load reminders:", error);
+    }
+  };
+
+  loadReminders();
+}, []);
+
+  return (
+    <div className="h-full flex flex-col bg-[#F8FAFB]">
+      <StatusBar />
+      <div className="bg-gradient-to-br from-[#F59E0B] to-[#D97706] px-5 pt-2 pb-5 rounded-b-[32px]">
+        <div className="flex items-center gap-3">
+          <BackButton onBack={onBack} light />
+          <div>
+            <h2 className="text-white text-xl font-extrabold">Reminders</h2>
+            <p className="text-amber-100 text-sm">Today's schedule</p>
+          </div>
+        </div>
+      </div>
+      <div className="flex-1 px-5 pt-5 overflow-y-auto flex flex-col gap-3 pb-6">
+        {REMINDERS.map((r, i) => (
+          <div key={i} className={`bg-white rounded-3xl px-5 py-4 shadow-sm border-2 flex items-center gap-4 transition-all ${done[i] ? "opacity-60 border-gray-100" : "border-[#FEF3C7]"}`}>
+            <div className="w-12 h-12 rounded-2xl flex items-center justify-center shadow-sm" style={{background: done[i] ? "#F5F5F5" : r.color + "22"}}>
+              <span className="text-2xl">{r.icon}</span>
+            </div>
+            <div className="flex-1">
+              <p className={`font-bold text-base ${done[i] ? "line-through text-[#90A4AE]" : "text-[#37474F]"}`}>{r.label}</p>
+              <p className="text-[#78909C] text-sm">{r.time}</p>
+            </div>
+            <button
+              onClick={() => setDone(d => d.map((v,j) => j===i ? !v : v))}
+              className={`w-10 h-10 rounded-full border-2 flex items-center justify-center transition-all ${done[i] ? "bg-[#43A047] border-[#43A047]" : "border-gray-200 bg-white"}`}
+            >
+              {done[i] && <span className="text-white text-lg">✓</span>}
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── Voice Assistant ──────────────────────────────────────────────────────────
+function VoiceAssistant({ onBack }: { onBack: () => void }) {
+  const [listening, setListening] = useState(false);
+  const [response, setResponse] = useState<string|null>(null);
+
+  const toggleListen = () => {
+    if (listening) {
+      setListening(false);
+      setResponse("It's Tuesday morning. Your next reminder is: Take Medication at 9:00 AM. You have a wonderful day ahead, Ravi!");
+    } else {
+      setListening(true);
+      setResponse(null);
+    }
+  };
+
+  const suggestions = ["What time is it?", "What's next?", "Call Priya", "What day is it?"];
+
+  return (
+    <div className="h-full flex flex-col bg-[#F8FAFB]">
+      <StatusBar />
+      <div className="bg-gradient-to-br from-[#2E7D73] to-[#1A5C54] px-5 pt-2 pb-5 rounded-b-[32px]">
+        <div className="flex items-center gap-3">
+          <BackButton onBack={onBack} light />
+          <div>
+            <h2 className="text-white text-xl font-extrabold">Voice Helper</h2>
+            <p className="text-[#D9F4F1] text-sm">Ask me anything, Ravi!</p>
+          </div>
+        </div>
+      </div>
+      <div className="flex-1 px-5 pt-8 flex flex-col items-center gap-6 overflow-y-auto pb-6">
+        <div className="relative flex items-center justify-center mt-4">
+          {listening && <div className="absolute w-40 h-40 rounded-full bg-[#2E7D73]/20 animate-ping" />}
+          {listening && <div className="absolute w-52 h-52 rounded-full bg-[#2E7D73]/10 animate-ping" style={{animationDelay:"0.3s"}} />}
+          <button
+            onClick={toggleListen}
+            className={`w-36 h-36 rounded-full flex items-center justify-center shadow-2xl transition-all z-10 ${listening ? "bg-[#E53935] scale-110" : "bg-[#2E7D73]"}`}
+          >
+            <span className="text-6xl">{listening ? "🔴" : "🎤"}</span>
+          </button>
+        </div>
+        <p className="text-[#37474F] text-xl font-bold text-center">
+          {listening ? "Listening... speak now!" : "Tap to speak"}
+        </p>
+        {response && (
+          <div className="w-full bg-[#D9F4F1] border border-[#2E7D73]/20 rounded-3xl p-5 animate-fade-in">
+            <p className="text-[#78909C] text-xs font-semibold mb-2">MemoryNest says:</p>
+            <p className="text-[#37474F] text-lg font-medium leading-relaxed">"{response}"</p>
+          </div>
+        )}
+        <div className="w-full">
+          <p className="text-[#78909C] text-sm font-semibold mb-3">Try asking:</p>
+          <div className="flex flex-col gap-2">
+            {suggestions.map(s => (
+              <button key={s} onClick={() => { setListening(false); setResponse("It's Tuesday morning. Your next reminder is: Take Medication at 9:00 AM. You have a wonderful day ahead, Ravi!"); }}
+                className="bg-white rounded-2xl px-5 py-4 text-[#37474F] font-semibold text-base text-left shadow-sm border border-gray-100 active:scale-95 transition-transform">
+                💬 {s}
+              </button>
+            ))}
+          </div>
+        </div>
+        <button className="w-full py-5 bg-[#E53935] text-white text-xl font-extrabold rounded-2xl shadow-lg flex items-center justify-center gap-3">
+          <span className="text-2xl">🆘</span> Emergency SOS
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Patient Profile ──────────────────────────────────────────────────────────
+function PatientProfile({ onBack }: { onBack: () => void }) {
+  const [notifications, setNotifications] = useState(true);
+  const [largeText, setLargeText] = useState(true);
+  const [voiceReminders, setVoiceReminders] = useState(false);
+
+  const Toggle = ({ value, onChange }: { value: boolean; onChange: () => void }) => (
+    <button onClick={onChange} className={`w-14 h-8 rounded-full transition-all relative ${value ? "bg-[#2E7D73]" : "bg-gray-200"}`}>
+      <div className={`absolute top-1 w-6 h-6 bg-white rounded-full shadow transition-all ${value ? "right-1" : "left-1"}`} />
+    </button>
+  );
+
+  return (
+    <div className="h-full flex flex-col bg-[#F8FAFB] overflow-y-auto">
+      <StatusBar />
+      <div className="bg-gradient-to-br from-[#2E7D73] to-[#1A5C54] px-5 pt-2 pb-8 rounded-b-[32px]">
+        <div className="flex items-center gap-3 mb-5">
+          <BackButton onBack={onBack} light />
+          <h2 className="text-white text-xl font-extrabold">My Profile</h2>
+        </div>
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-24 h-24 rounded-full bg-[#D9F4F1] flex items-center justify-center shadow-lg">
+            <span className="text-5xl">👴</span>
+          </div>
+          <div className="text-center">
+            <h3 className="text-white text-2xl font-extrabold">Ravi Kumar</h3>
+            <p className="text-[#D9F4F1] text-sm">Age 72 · Joined March 2024</p>
+          </div>
+        </div>
+      </div>
+      <div className="px-5 pt-5 flex flex-col gap-4 pb-8">
+        {/* Achievements */}
+        <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100">
+          <h4 className="text-[#37474F] font-extrabold text-lg mb-3">🏅 Achievements</h4>
+          <div className="grid grid-cols-3 gap-3">
+            {[["🔥","7-Day Streak"],["🌟","Memory Master"],["🌸","Garden Grown"],["🧠","Quest Hero"],["💪","Daily Champ"],["❤️","Family Bond"]].map(([icon,label]) => (
+              <div key={label} className="bg-[#F8FAFB] rounded-2xl p-3 flex flex-col items-center gap-1">
+                <span className="text-3xl">{icon}</span>
+                <p className="text-[#78909C] text-[10px] font-semibold text-center">{label}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Stats */}
+        <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100">
+          <h4 className="text-[#37474F] font-extrabold text-lg mb-3">📊 My Progress</h4>
+          {[["Brain Quests Done","24"],["Memory Matches","18"],["Garden Plants","5"],["Total Stars","127"]].map(([label, val]) => (
+            <div key={label} className="flex justify-between items-center py-3 border-b border-gray-50 last:border-0">
+              <p className="text-[#78909C] font-medium text-sm">{label}</p>
+              <p className="text-[#37474F] font-extrabold text-base">{val}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* Family */}
+        <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100">
+          <h4 className="text-[#37474F] font-extrabold text-lg mb-3">👨‍👩‍👧 My Family</h4>
+          {[["👧","Priya Kumar","Daughter"],["👦","Arjun Kumar","Son"],["👩","Meera Kumar","Wife"]].map(([icon,name,role]) => (
+            <div key={name} className="flex items-center gap-3 py-3 border-b border-gray-50 last:border-0">
+              <div className="w-12 h-12 bg-[#D9F4F1] rounded-full flex items-center justify-center text-2xl">{icon}</div>
+              <div>
+                <p className="text-[#37474F] font-bold text-base">{name}</p>
+                <p className="text-[#78909C] text-sm">{role}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Settings */}
+        <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100">
+          <h4 className="text-[#37474F] font-extrabold text-lg mb-3">⚙️ My Settings</h4>
+          {[
+            { label: "Push Notifications", val: notifications, toggle: () => setNotifications(v => !v) },
+            { label: "Large Text Mode", val: largeText, toggle: () => setLargeText(v => !v) },
+            { label: "Voice Reminders", val: voiceReminders, toggle: () => setVoiceReminders(v => !v) },
+          ].map(item => (
+            <div key={item.label} className="flex items-center justify-between py-3.5 border-b border-gray-50 last:border-0">
+              <p className="text-[#37474F] font-semibold text-sm">{item.label}</p>
+              <Toggle value={item.val} onChange={item.toggle} />
+            </div>
+          ))}
+        </div>
+
+        {/* Support */}
+        <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100">
+          <h4 className="text-[#37474F] font-extrabold text-base mb-3">Help & Support</h4>
+          {["Help & FAQ","Privacy Policy","Contact Support"].map(item => (
+            <div key={item} className="flex items-center justify-between py-3.5 border-b border-gray-50 last:border-0">
+              <p className="text-[#37474F] font-semibold text-sm">{item}</p>
+              <span className="text-[#90A4AE]">→</span>
+            </div>
+          ))}
+        </div>
+
+        <p className="text-center text-[#B0BEC5] text-xs pb-2">MemoryNest v2.1.0</p>
+      </div>
+    </div>
+  );
+}
+
+// ─── App Shell ────────────────────────────────────────────────────────────────
+export default function App() {
+  const [screen, setScreen] = useState<Screen>("patient-home");
+
+  const nav = (s: Screen) => setScreen(s);
+
+  const renderScreen = () => {
+    switch(screen) {
+      case "patient-home":    return <PatientHome onNav={nav} />;
+      case "brain-quest":     return <BrainQuest onBack={() => nav("patient-home")} />;
+      case "memory-match":    return <MemoryMatch onBack={() => nav("patient-home")} />;
+      case "daily-puzzle":    return <DailyPuzzle onBack={() => nav("patient-home")} />;
+      case "memory-garden":   return <MemoryGarden onBack={() => nav("patient-home")} />;
+      case "reminders":       return <Reminders onBack={() => nav("patient-home")} />;
+      case "voice-assistant": return <VoiceAssistant onBack={() => nav("patient-home")} />;
+      case "patient-profile": return <PatientProfile onBack={() => nav("patient-home")} />;
+    }
+  };
+
+  return (
+    <div className="flex items-center justify-center min-h-screen bg-[#B0BEC5]/20">
+      <div
+        className="relative w-[390px] h-[844px] bg-[#F8FAFB] rounded-[44px] shadow-2xl overflow-hidden flex flex-col border border-gray-200"
+        style={{boxShadow:"0 32px 64px rgba(0,0,0,0.18), 0 0 0 1px rgba(255,255,255,0.5) inset"}}
+      >
+        <div className="flex-1 overflow-hidden flex flex-col">
+          {renderScreen()}
+        </div>
+        <BottomNav active={screen} onNav={nav} />
+      </div>
+    </div>
+  );
+}

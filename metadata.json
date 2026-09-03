@@ -1,0 +1,6 @@
+{
+  "name": "Caregiver Dashboard - Dementia Cognitive Care",
+  "description": "Smart India Hackathon 2026 Caregiver Dashboard for monitoring elderly dementia patients, with Material 3 healthcare design, cognitive metrics, safety alerts, and Firebase integration readiness.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
