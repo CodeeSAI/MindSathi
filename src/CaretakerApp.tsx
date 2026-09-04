@@ -1,13 +1,19 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
+  generateCognitiveAIReport,
+  CognitiveAIReport,
+} from "./services/aiCognitiveReport";
+import {
   collection,
   doc,
   getDoc,
   getDocs,
   query,
   where,
+  onSnapshot,
 } from "firebase/firestore";
 import { auth, db } from "./firebase";
+import { signOut } from "firebase/auth";
 
 import {
   ActiveTab,
@@ -77,6 +83,8 @@ export function App() {
 
   const [cognitiveProgress, setCognitiveProgress] =
     useState<CognitiveProgress>(INITIAL_COGNITIVE_PROGRESS);
+    const [aiReport, setAiReport] =
+  useState<CognitiveAIReport | null>(null);
 
   const [isSosModalOpen, setIsSosModalOpen] = useState(false);
 
@@ -91,330 +99,330 @@ export function App() {
      ========================================================= */
 
   useEffect(() => {
-    const loadAssignedPatient = async () => {
-      const caretaker = auth.currentUser;
+  let unsubscribeGames: (() => void) | undefined;
+  let unsubscribeReminders: (() => void) | undefined;
 
-      if (!caretaker) {
-        console.error("No authenticated caretaker found.");
+  const loadAssignedPatient = async () => {
+    const caretaker = auth.currentUser;
+
+    if (!caretaker) {
+      console.error("No authenticated caretaker found.");
+      return;
+    }
+
+    try {
+      console.log("Caretaker UID:", caretaker.uid);
+
+      // Find the patient assigned to this caretaker
+      const q = query(
+        collection(db, "users"),
+        where("caretakerId", "==", caretaker.uid),
+        where("role", "==", "patient")
+      );
+
+      const snapshot = await getDocs(q);
+
+      if (snapshot.empty) {
+        console.error("No patient linked to caretaker:", caretaker.uid);
         return;
       }
 
-      try {
-        console.log("Caretaker UID:", caretaker.uid);
+      const patientDoc = snapshot.docs[0];
+      const patientData = patientDoc.data();
+      const patientId = patientDoc.id;
 
-        /* ---------------------------------------------
-           1. Find assigned patient
-           --------------------------------------------- */
+      console.log("Linked patient:", patientId, patientData);
 
-        const patientQuery = query(
-          collection(db, "users"),
-          where("caretakerId", "==", caretaker.uid),
-          where("role", "==", "patient")
-        );
+      // Show real patient name
+      setPatient({
+        ...INITIAL_PATIENT,
+        fullName: patientData.name || "Ravi Kumar",
+      });
 
-        const patientSnapshot = await getDocs(patientQuery);
+      // =========================================================
+      // REAL-TIME REMINDER SYNC
+      // =========================================================
+      const reminderRef = doc(
+        db,
+        "patients",
+        patientId,
+        "reminders",
+        "today"
+      );
 
-        console.log(
-          "Patient records found:",
-          patientSnapshot.size
-        );
-
-        if (patientSnapshot.empty) {
-          console.error(
-            "No patient linked to caretaker:",
-            caretaker.uid
-          );
-          return;
-        }
-
-        const patientDoc = patientSnapshot.docs[0];
-        const patientData = patientDoc.data();
-        const patientId = patientDoc.id;
-
-        console.log(
-          "Linked patient:",
-          patientId,
-          patientData
-        );
-
-        /* ---------------------------------------------
-           2. Update patient name
-           --------------------------------------------- */
-
-        setPatient((previous) => ({
-          ...previous,
-          id: patientId,
-          fullName: patientData.name || "Ravi Kumar",
-        }));
-
-        /* ---------------------------------------------
-          /* 3. Load Ravi's reminders */
-try {
-  const reminderSnapshot = await getDoc(
-    doc(db, "patients", patientId, "reminders", "today")
-  );
-
-  if (reminderSnapshot.exists()) {
-    const reminderData = reminderSnapshot.data();
-
-    if (Array.isArray(reminderData.reminders)) {
-      const done = Array.isArray(reminderData.done)
-        ? reminderData.done
-        : [];
-
-      const normalizedReminders: ReminderItem[] =
-        reminderData.reminders.map(
-          (item: any, index: number) => {
-            const label = String(
-              item.label || item.title || "Reminder"
-            );
-
-            const lowerLabel = label.toLowerCase();
-
-            let category:
-              | "Medicine"
-              | "Water"
-              | "Appointment";
-
-            if (
-              lowerLabel.includes("medication") ||
-              lowerLabel.includes("medicine")
-            ) {
-              category = "Medicine";
-            } else if (
-              lowerLabel.includes("water") ||
-              lowerLabel.includes("hydration")
-            ) {
-              category = "Water";
-            } else {
-              category = "Appointment";
-            }
-
-            return {
-              id: String(
-                item.id || `ravi-reminder-${index}`
-              ),
-              title: label,
-              category,
-              time: String(item.time || ""),
-              dosageOrDetail: label,
-              repeat: "Daily",
-              isCompleted: Boolean(done[index]),
-            };
+      unsubscribeReminders = onSnapshot(
+        reminderRef,
+        (reminderSnapshot) => {
+          if (!reminderSnapshot.exists()) {
+            setReminders([]);
+            return;
           }
-        );
 
-      setReminders(normalizedReminders);
-    } else {
-      setReminders([]);
-    }
-  } else {
-    setReminders([]);
-  }
-} catch (reminderError) {
-  console.error("Reminder read failed:", reminderError);
-}
-        /* ---------------------------------------------
-           4. Load game results
-           --------------------------------------------- */
+          const reminderData = reminderSnapshot.data();
 
-        try {
-          const resultsSnapshot = await getDocs(
-            collection(
-              db,
-              "patients",
-              patientId,
-              "gameResults"
-            )
-          );
+          const rawReminders = Array.isArray(reminderData.reminders)
+            ? reminderData.reminders
+            : [];
 
-          console.log(
-            "Game results loaded:",
-            resultsSnapshot.size
-          );
+          const done = Array.isArray(reminderData.done)
+            ? reminderData.done
+            : [];
 
-          const rawGames = resultsSnapshot.docs.map(
-            (docSnap) => {
-              const data = docSnap.data();
-
-              const completedDate =
-                data.completedAt?.toDate?.() ?? null;
-
-              const maxScore =
-                data.gameName === "Memory Match"
-                  ? 20
-                  : 5;
+          const normalizedReminders = rawReminders.map(
+            (r: any, index: number) => {
+              const label = r.label ?? r.title ?? "Reminder";
+              const lower = String(label).toLowerCase();
 
               return {
-                id: docSnap.id,
-                gameName:
-                  data.gameName || "Cognitive Game",
-
-                playedTime: completedDate
-                  ? completedDate.toLocaleString()
-                  : "Recently",
-
-                score: Number(data.score || 0),
-                maxScore,
-
-                duration: "Completed",
-                difficulty: "Standard",
-                cognitiveDomain: "Memory",
-
-                timestamp: completedDate
-                  ? completedDate.getTime()
-                  : 0,
+                id: r.id ?? `r-${index}`,
+                title: label,
+                category: (
+  lower.includes("medication")
+    ? "Medicine"
+    : lower.includes("water") ||
+      lower.includes("hydration")
+    ? "Water"
+    : "Appointment"
+) as "Medicine" | "Water" | "Appointment",
+                time: r.time ?? "",
+                dosageOrDetail:
+                  r.dosageOrDetail ?? label,
+                repeat: r.repeat ?? "Daily",
+                isCompleted: Boolean(
+                  done[index] ?? r.done
+                ),
               };
             }
           );
-          const completedDates = new Set<string>();
 
-rawGames.forEach((game) => {
-  if (game.timestamp > 0) {
-    const date = new Date(game.timestamp);
+          setReminders(normalizedReminders);
 
-    completedDates.add(
-      date.toLocaleDateString("en-CA")
+          console.log(
+            "Real-time reminders updated:",
+            normalizedReminders
+          );
+        },
+        (error) => {
+          console.error(
+            "Reminder listener failed:",
+            error
+          );
+        }
+      );
+
+      // =========================================================
+      // REAL-TIME GAME RESULT SYNC
+      // =========================================================
+      const gamesRef = collection(
+        db,
+        "patients",
+        patientId,
+        "gameResults"
+      );
+
+      unsubscribeGames = onSnapshot(
+        gamesRef,
+        (resultsSnapshot) => {
+  const gameHistory = [...resultsSnapshot.docs]
+  .sort((a, b) => {
+    const timeA =
+      a.data().completedAt?.toMillis?.() || 0;
+
+    const timeB =
+      b.data().completedAt?.toMillis?.() || 0;
+
+    return timeB - timeA;
+  })
+  .map((docSnap) => {
+    const data = docSnap.data();
+
+    // All cognitive games now store their performance on a 0–100 scale.
+    let score = 0;
+
+if (data.normalizedScore !== undefined) {
+  // New adaptive-game records
+  score = Number(data.normalizedScore);
+} else if (data.maxScore) {
+  // Older records that stored score + maxScore
+  score =
+    (Number(data.score || 0) /
+      Number(data.maxScore)) *
+    100;
+} else if (data.gameName === "Memory Match") {
+  // Old Memory Match records were scored out of 20
+  score =
+    (Number(data.score || 0) / 20) * 100;
+} else {
+  // Older cognitive games were scored out of 5
+  score =
+    (Number(data.score || 0) / 5) * 100;
+}
+
+score = Math.max(
+  0,
+  Math.min(100, Math.round(score))
+);
+
+    const gameName = String(
+      data.gameName ||
+      data.gameType ||
+      "Cognitive Game"
     );
+
+    const domainMap: Record<string, string> = {
+      "Memory Match": "Memory",
+      "Focus Finder": "Attention",
+      "Daily Life Recall": "Routine Recall",
+      "Pattern Path": "Pattern Recognition",
+      "Familiar Place": "Memory",
+      "Picture Recall": "Memory",
+    };
+
+    return {
+      id: docSnap.id,
+      gameName,
+
+      playedTime:
+        data.completedAt?.toDate?.()
+          ? data.completedAt.toDate().toLocaleString()
+          : "Recently",
+
+      score,
+      maxScore: 100,
+
+      duration:
+        data.completionTimeSeconds
+          ? `${Math.round(data.completionTimeSeconds)}s`
+          : data.durationSeconds
+          ? `${data.durationSeconds}s`
+          : "Completed",
+
+      difficulty:
+        data.difficultyLevel
+          ? `Level ${data.difficultyLevel}`
+          : "Adaptive",
+
+      cognitiveDomain:
+        data.cognitiveDomain ||
+        domainMap[gameName] ||
+        "Cognitive",
+    };
+  });
+
+  // =========================================================
+// LATEST RESULT OF EACH GAME FOR AI ANALYSIS
+// gameHistory is already newest → oldest
+// =========================================================
+const latestByGame = new Map<
+  string,
+  (typeof gameHistory)[number]
+>();
+
+gameHistory.forEach((game) => {
+  if (!latestByGame.has(game.gameName)) {
+    latestByGame.set(game.gameName, game);
   }
 });
 
-const today = new Date();
-today.setHours(0, 0, 0, 0);
-
-const todayKey = today.toLocaleDateString("en-CA");
-
-const yesterday = new Date(today);
-yesterday.setDate(today.getDate() - 1);
-
-const yesterdayKey =
-  yesterday.toLocaleDateString("en-CA");
-
-let currentStreak = 0;
-
-if (
-  completedDates.has(todayKey) ||
-  completedDates.has(yesterdayKey)
-) {
-  const startDate = completedDates.has(todayKey)
-    ? today
-    : yesterday;
-
-  const checkDate = new Date(startDate);
-
-  while (
-    completedDates.has(
-      checkDate.toLocaleDateString("en-CA")
-    )
-  ) {
-    currentStreak++;
-
-    checkDate.setDate(
-      checkDate.getDate() - 1
-    );
-  }
-}
-
-
-          /* ---------------------------------------------
-             Keep only the latest result of each game
-             --------------------------------------------- */
-
-          const latestGames = new Map<
-            string,
-            (typeof rawGames)[number]
-          >();
-
-          rawGames
-            .sort(
-              (a, b) => b.timestamp - a.timestamp
+const latestGameHistory = Array.from(
+  latestByGame.values()
+);
+  // Overall score is the average of each game's 0–100 performance.
+  const overallScore =
+    gameHistory.length > 0
+      ? Math.max(
+          0,
+          Math.min(
+            100,
+            Math.round(
+              gameHistory.reduce(
+                (total, game) =>
+                  total + Number(game.score || 0),
+                0
+              ) / gameHistory.length
             )
-            .forEach((game) => {
-              if (!latestGames.has(game.gameName)) {
-                latestGames.set(
-                  game.gameName,
-                  game
-                );
-              }
-            });
+          )
+        )
+      : 0;
 
-          const gameHistory = Array.from(
-            latestGames.values()
-          );
+  // =========================================================
+  // GEMINI AI COGNITIVE REPORT
+  // =========================================================
+  generateCognitiveAIReport(gameHistory)
+    .then((report) => {
+      setAiReport(report);
 
-          const overallScore =
-            gameHistory.length > 0
-              ? Math.round(
-                  gameHistory.reduce(
-                    (total, game) => {
-                      const percentage =
-                        game.maxScore > 0
-                          ? (game.score /
-                              game.maxScore) *
-                            100
-                          : 0;
+      console.log(
+        "GEMINI AI COGNITIVE REPORT:",
+        report
+      );
+    })
+    .catch((error) => {
+      console.error(
+        "AI cognitive report failed:",
+        error
+      );
+    });
 
-                      return total + percentage;
-                    },
-                    0
-                  ) / gameHistory.length
-                )
-              : 0;
+  setCognitiveProgress({
+    overallScore,
 
-          setCognitiveProgress({
-            overallScore,
+    improvementPercentage: 0,
 
-            improvementPercentage: 0,
+    statusDescription:
+      overallScore >= 80
+        ? "Strong cognitive performance"
+        : overallScore >= 60
+        ? "Steady cognitive performance"
+        : "Continued practice recommended",
 
-            statusDescription:
-              overallScore >= 80
-                ? "Strong cognitive performance"
-                : overallScore >= 60
-                ? "Steady cognitive performance"
-                : "Continued practice recommended",
+    weeklyTrend: gameHistory.map(
+      (game, index) => ({
+        day: `Game ${index + 1}`,
+        score: Math.max(
+          0,
+          Math.min(100, Number(game.score || 0))
+        ),
+      })
+    ),
 
-            weeklyTrend: gameHistory.map(
-              (game, index) => ({
-                day: `Game ${index + 1}`,
-                score:
-                  game.maxScore > 0
-                    ? Math.round(
-                        (game.score /
-                          game.maxScore) *
-                          100
-                      )
-                    : 0,
-              })
-            ),
+    gameHistory,
+  });
 
-            gameHistory: gameHistory.map(
-              ({
-                timestamp,
-                ...game
-              }) => game
-            ),
-          });
-
-          console.log(
-            "Cognitive report updated:",
-            overallScore
-          );
-        } catch (gameError) {
+  console.log(
+    "REAL-TIME GAME UPDATE:",
+    gameHistory
+  );
+},
+(error) => {
+        
           console.error(
-            "Game results read failed:",
-            gameError
+            "Game results listener failed:",
+            error
           );
         }
-      } catch (error) {
-        console.error(
-          "Failed to load caretaker data:",
-          error
-        );
-      }
-    };
+      );
+    } catch (error) {
+      console.error(
+        "FAILED TO LOAD CARETAKER DATA:",
+        error
+      );
+    }
+  };
 
-    loadAssignedPatient();
-  }, []);
+  loadAssignedPatient();
+
+  // Clean up Firestore listeners
+  return () => {
+    if (unsubscribeGames) {
+      unsubscribeGames();
+    }
+
+    if (unsubscribeReminders) {
+      unsubscribeReminders();
+    }
+  };
+}, []);
 
   /* =========================================================
      DERIVED GAME DATA
@@ -722,14 +730,14 @@ if (
               <div>
 
                 <p className="text-[10px] uppercase tracking-wide font-semibold text-emerald-100">
-                  Cognitive Report
+                  Cognitive AI Report
                 </p>
 
                 <div className="flex items-baseline gap-2">
 
                   <span className="text-3xl font-black">
-                    {memoryScore}/100
-                  </span>
+  {aiReport ? aiReport.overallScore : memoryScore}/100
+</span>
 
                   <span className="text-[10px] font-bold bg-white/20 px-2 py-1 rounded">
                     {gameHistory.length} games
@@ -746,9 +754,9 @@ if (
           </div>
 
           <p className="text-xs text-emerald-100 mt-2">
-            Based on the latest result for each
-            completed cognitive game.
-          </p>
+  {aiReport?.summary ||
+    "AI analysis based on the latest results from each completed cognitive game."}
+</p>
 
         </div>
 
@@ -1089,8 +1097,18 @@ if (
         }
       />
 
-    </div>
-  );
-}
+      <button
+        onClick={async () => {
+          await signOut(auth);
+          window.location.reload();
+        }}
+        className="w-full py-4 mt-4 bg-red-50 border-2 border-red-200 text-red-600 text-lg font-bold rounded-2xl"
+      >
+        🚪 Logout
+      </button>
 
+    </div>
+);
+}
+ 
 export default App;

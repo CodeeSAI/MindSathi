@@ -80,7 +80,7 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        background: "#f8fafc",
+        background: "#F4F7F8",
         padding: "24px",
         fontFamily: "Arial, sans-serif",
       }}
@@ -89,10 +89,11 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
         style={{
           width: "100%",
           maxWidth: "430px",
-          background: "#ffffff",
+          background: "#FFFFFF",
           borderRadius: "24px",
           padding: "40px",
-          boxShadow: "0 15px 40px rgba(0,0,0,0.08)",
+          boxShadow: "0 20px 60px rgba(0,0,0,0.35)",
+border: "1px solid rgba(79,175,161,0.2)",
           boxSizing: "border-box",
         }}
       >
@@ -102,21 +103,32 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
             marginBottom: "32px",
           }}
         >
+         <img
+  src="/logo.png"
+  alt="MindSathi"
+  style={{
+    width: "120px",
+height: "120px",
+    objectFit: "contain",
+    margin: "0 auto 12px",
+    display: "block",
+  }}
+/>
           <h1
             style={{
               margin: 0,
               fontSize: "32px",
-              color: "#2E7D73",
+              color: "#31527A",
             }}
           >
-            MemoryNest
+            MindSathi
           </h1>
 
           <p
             style={{
               marginTop: "10px",
               marginBottom: 0,
-              color: "#64748b",
+              color: "#B8D8D5",
               fontSize: "16px",
             }}
           >
@@ -129,7 +141,7 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
             display: "block",
             marginBottom: "8px",
             fontWeight: 600,
-            color: "#0f172a",
+            color: "#FFFFFF",
           }}
         >
           Email
@@ -146,7 +158,7 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
             boxSizing: "border-box",
             padding: "14px",
             marginBottom: "20px",
-            border: "1px solid #cbd5e1",
+            border: "1px solid #3F7772",
             borderRadius: "12px",
             fontSize: "16px",
             outline: "none",
@@ -158,7 +170,7 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
             display: "block",
             marginBottom: "8px",
             fontWeight: 600,
-            color: "#0f172a",
+            color: "#FFFFFF",
           }}
         >
           Password
@@ -180,7 +192,7 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
             boxSizing: "border-box",
             padding: "14px",
             marginBottom: "18px",
-            border: "1px solid #cbd5e1",
+            border: "1px solid #3F7772",
             borderRadius: "12px",
             fontSize: "16px",
             outline: "none",
@@ -211,7 +223,7 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
             padding: "15px",
             border: "none",
             borderRadius: "12px",
-            background: "#2E7D73",
+            background: "#4FAFA1",
             color: "#ffffff",
             fontSize: "16px",
             fontWeight: 600,
@@ -231,7 +243,7 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
             marginBottom: 0,
           }}
         >
-          Secure access to your MemoryNest account
+          Secure access to your MindSathi account
         </p>
       </div>
     </div>

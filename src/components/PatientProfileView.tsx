@@ -1,11 +1,8 @@
 import React from "react";
 import { PatientProfile, CognitiveProgress } from "../types";
-import {
-  Brain,
-  ShieldCheck,
-  Trophy,
-  Clock,
-} from "lucide-react";
+import { Brain, ShieldCheck, Clock } from "lucide-react";
+import { signOut } from "firebase/auth";
+import { auth } from "../firebase";
 
 interface PatientProfileViewProps {
   patient: PatientProfile;
@@ -18,20 +15,19 @@ export const PatientProfileView: React.FC<PatientProfileViewProps> = ({
   progress,
 }) => {
   return (
-    <div className="space-y-4 pb-20">
+    <div className="space-y-4 pb-6">
 
       {/* Header */}
       <div>
         <h2 className="text-xl font-extrabold text-slate-900">
-          Cognitive Report
+          Patient Profile
         </h2>
-
         <p className="text-xs text-slate-500 mt-1">
-          Patient progress and game performance
+          Patient information and cognitive summary
         </p>
       </div>
 
-      {/* Patient Identity */}
+      {/* Patient Information */}
       <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm">
         <div className="flex items-center gap-3">
 
@@ -39,7 +35,7 @@ export const PatientProfileView: React.FC<PatientProfileViewProps> = ({
             <ShieldCheck className="w-6 h-6 text-emerald-600" />
           </div>
 
-          <div className="flex-1">
+          <div>
             <p className="text-[10px] uppercase tracking-wide font-bold text-slate-400">
               Patient
             </p>
@@ -48,19 +44,15 @@ export const PatientProfileView: React.FC<PatientProfileViewProps> = ({
               {patient.fullName}
             </h3>
 
-            <div className="flex items-center gap-1 mt-1">
-              <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-
-              <span className="text-[10px] font-bold text-emerald-700">
-                {patient.status}
-              </span>
-            </div>
+            <p className="text-xs font-bold text-emerald-700 mt-1">
+              ● {patient.status}
+            </p>
           </div>
 
         </div>
       </div>
 
-      {/* Overall Score */}
+      {/* Cognitive Summary */}
       <div className="bg-gradient-to-br from-teal-800 to-emerald-700 rounded-2xl p-4 text-white shadow-md">
 
         <div className="flex items-center gap-3">
@@ -71,7 +63,7 @@ export const PatientProfileView: React.FC<PatientProfileViewProps> = ({
 
           <div>
             <p className="text-[10px] uppercase font-semibold text-emerald-100">
-              Overall Cognitive Score
+              Cognitive Score
             </p>
 
             <p className="text-3xl font-black">
@@ -86,38 +78,35 @@ export const PatientProfileView: React.FC<PatientProfileViewProps> = ({
         </p>
       </div>
 
-      {/* Game Report */}
+      {/* Recent Game Results */}
       <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm">
 
         <div className="flex items-center gap-2 mb-3">
 
           <div className="w-8 h-8 rounded-lg bg-violet-50 flex items-center justify-center">
-            <Trophy className="w-4 h-4 text-violet-600" />
+            <Brain className="w-4 h-4 text-violet-600" />
           </div>
 
           <div>
             <h3 className="text-sm font-bold text-slate-900">
-              Game Performance
+              Recent Game Results
             </h3>
 
             <p className="text-[10px] text-slate-500">
-              Latest result for each game
+              Latest cognitive activities
             </p>
           </div>
 
         </div>
 
         {progress.gameHistory.length === 0 ? (
-
           <p className="text-xs text-slate-500 text-center py-4">
             No game results available.
           </p>
-
         ) : (
-
           <div className="space-y-2">
 
-            {progress.gameHistory.map((game) => {
+            {progress.gameHistory.slice(0, 5).map((game) => {
 
               const percentage =
                 game.maxScore > 0
@@ -134,7 +123,7 @@ export const PatientProfileView: React.FC<PatientProfileViewProps> = ({
 
                   <div className="flex items-center justify-between">
 
-                    <div className="min-w-0">
+                    <div>
                       <h4 className="text-xs font-bold text-slate-900">
                         {game.gameName}
                       </h4>
@@ -172,8 +161,18 @@ export const PatientProfileView: React.FC<PatientProfileViewProps> = ({
 
           </div>
         )}
-
       </div>
+
+      {/* Logout */}
+      <button
+        onClick={async () => {
+          await signOut(auth);
+          window.location.reload();
+        }}
+        className="w-full py-4 bg-red-50 border-2 border-red-200 text-red-600 text-base font-bold rounded-2xl"
+      >
+        🚪 Logout
+      </button>
 
     </div>
   );

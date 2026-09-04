@@ -1,12 +1,39 @@
 import React, { useEffect, useRef, useState } from "react";
 import { addDoc, collection, doc, getDoc, getDocs, serverTimestamp, setDoc } from "firebase/firestore";
 import { auth, db } from "../firebase";
-import { GoogleGenAI } from "@google/genai";
+import { signOut } from "firebase/auth";
+import { generateCognitiveAIReport } from "../services/aiCognitiveReport";
+import { FocusFinder } from "./FocusFinder";
+import { DailyLifeRecall } from "./DailyLifeRecall";
+import { PatternPath } from "./PatternPath";
+import { SaharaAiAssistant } from "./SaharaAiAssistant";
+import {
+  getDailyGameDifficulty,
+  DifficultyLevel,
+  getDailyAdaptiveLevel,
+  saveDailyAdaptiveLevel,
+  evaluateMemoryMatchPerformance,
+  saveGameTelemetryWithSync,
+  MemoryMatchLevel,
+  AdaptiveResult,
+  PAIRS_PER_LEVEL,
+} from "../services/adaptiveCognitiveEngine";
+
+import { Brain } from "lucide-react";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 type Screen =
-  | "patient-home" | "brain-quest" | "memory-match"
-  | "picture-recall" | "familiar-place" | "memory-garden" | "reminders" | "voice-assistant"
+  | "patient-home"
+  | "brain-quest"
+  | "memory-match"
+  | "focus-finder"
+  | "daily-life-recall"
+  | "pattern-path"
+  | "picture-recall"
+  | "familiar-place"
+  | "memory-garden"
+  | "reminders"
+  | "voice-assistant"
   | "patient-profile";
 
 // ─── Shared Components ────────────────────────────────────────────────────────
@@ -55,371 +82,807 @@ function BackButton({ onBack, light = false }: { onBack: () => void; light?: boo
   );
 }
 
-// ─── Patient Home ─────────────────────────────────────────────────────────────
+// ─── Patient Home ─────────────────────────────────────────
+
 function PatientHome({ onNav }: { onNav: (s: Screen) => void }) {
   const hour = new Date().getHours();
-  const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
-const [stars, setStars] = useState(0);
-const [streak, setStreak] = useState(0);
-const [completedGames, setCompletedGames] = useState(0);
-const [badges, setBadges] = useState(0);
-const [upcomingReminder, setUpcomingReminder] = useState<{
-  title: string;
-  time: string;
-} | null>(null);
-useEffect(() => {
-  const loadDashboardData = async () => {
-    const user = auth.currentUser;
 
-    if (!user) return;
+  const greeting =
+    hour < 12
+      ? "Good morning"
+      : hour < 17
+      ? "Good afternoon"
+      : "Good evening";
 
-    try {
-      const snapshot = await getDocs(
-        collection(db, "patients", user.uid, "gameResults")
-      );
+  const [stars, setStars] = useState(0);
+  const [streak, setStreak] = useState(0);
+  const [badges, setBadges] = useState(0);
+  const [todayCompletedGames, setTodayCompletedGames] =
+    useState<Set<string>>(new Set());
+    const [aiReport, setAiReport] = useState<any>(null);
 
-      // TOTAL STARS
-      const totalStars = snapshot.docs.reduce(
-        (total, gameDoc) =>
-          total + Number(gameDoc.data().starsEarned || 0),
-        0
-      );
+  const [upcomingReminder, setUpcomingReminder] = useState<{
+    title: string;
+    time: string;
+  } | null>(null);
 
-      setStars(totalStars);
+  const memoryLevel =
+    getDailyGameDifficulty("memory-match");
 
-      // BADGES
-      const completedGameNames = new Set<string>();
-      const perfectGameNames = new Set<string>();
+  const focusLevel =
+    getDailyGameDifficulty("focus-finder");
 
-      snapshot.docs.forEach((gameDoc) => {
-        const data = gameDoc.data();
-        const gameName = String(
-          data.gameName || "Cognitive Game"
-        );
+  const recallLevel =
+    getDailyGameDifficulty("daily-life-recall");
 
-        completedGameNames.add(gameName);
+  const patternLevel =
+    getDailyGameDifficulty("pattern-path");
 
-        const score = Number(data.score || 0);
+  useEffect(() => {
+    const loadDashboardData = async () => {
+      const user = auth.currentUser;
 
-        if (
-          (gameName === "Memory Match" && score === 20) ||
-          (gameName !== "Memory Match" && score === 5)
-        ) {
-          perfectGameNames.add(gameName);
-        }
-      });
+      if (!user) return;
 
-      setBadges(
-        completedGameNames.size + perfectGameNames.size
-      );
+      try {
+        const snapshot = await getDocs(
+          collection(
+            db,
+            "patients",
+            user.uid,
+            "gameResults"
+          )
+            );
 
-      // TODAY'S GAMES
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
+    const gameHistory = snapshot.docs.map((gameDoc) => {
+      const data = gameDoc.data();
 
-      const todayKey =
-        today.toLocaleDateString("en-CA");
+      let score = Number(data.normalizedScore ?? data.score ?? 0);
 
-      const todayGames = new Set<string>();
-      const completedDates = new Set<string>();
-
-      snapshot.docs.forEach((gameDoc) => {
-        const data = gameDoc.data();
-
-        const completedAt =
-          data.completedAt?.toDate?.() ?? null;
-
-        if (!completedAt) return;
-
-        const gameDate = new Date(completedAt);
-        gameDate.setHours(0, 0, 0, 0);
-
-        const dateKey =
-          gameDate.toLocaleDateString("en-CA");
-
-        completedDates.add(dateKey);
-
-        if (dateKey === todayKey) {
-          todayGames.add(
-            String(
-              data.gameName || "Cognitive Game"
-            )
-          );
-        }
-      });
-
-      setCompletedGames(
-        Math.min(todayGames.size, 3)
-      );
-
-      // STREAK
-      const yesterday = new Date(today);
-      yesterday.setDate(
-        yesterday.getDate() - 1
-      );
-
-      const yesterdayKey =
-        yesterday.toLocaleDateString("en-CA");
-
-      let currentStreak = 0;
-
-      const startDate = completedDates.has(todayKey)
-        ? today
-        : completedDates.has(yesterdayKey)
-        ? yesterday
-        : null;
-
-      if (startDate) {
-        const checkDate = new Date(startDate);
-
-        while (true) {
-          const dateKey =
-            checkDate.toLocaleDateString("en-CA");
-
-          if (!completedDates.has(dateKey)) break;
-
-          currentStreak++;
-
-          checkDate.setDate(
-            checkDate.getDate() - 1
-          );
-        }
+      if (data.normalizedScore === undefined && data.maxScore) {
+        score =
+          (score / Number(data.maxScore)) * 100;
       }
 
-      setStreak(currentStreak);
+      return {
+        id: gameDoc.id,
+        gameName: String(
+          data.gameName ||
+          data.gameType ||
+          "Cognitive Game"
+        ),
+        score: Math.max(
+          0,
+          Math.min(100, Math.round(score))
+        ),
+        maxScore: 100,
+        cognitiveDomain:
+          data.cognitiveDomain || "Cognitive",
+        playedTime:
+          data.completedAt?.toDate?.()
+            ? data.completedAt.toDate().toLocaleString()
+            : "Recently",
+      };
+    });
 
-      // UPCOMING REMINDER
-      const reminderSnapshot = await getDoc(
-        doc(
-          db,
-          "patients",
-          user.uid,
-          "reminders",
-          "today"
-        )
-      );
-
-      if (reminderSnapshot.exists()) {
-        const reminderData =
-          reminderSnapshot.data();
-
-        const reminderList = Array.isArray(
-          reminderData.reminders
-        )
-          ? reminderData.reminders
-          : [];
-
-        const doneList = Array.isArray(
-          reminderData.done
-        )
-          ? reminderData.done
-          : [];
-
-        const pending = reminderList
-          .map((item: any, index: number) => ({
-            title: String(
-              item.label ||
-                item.title ||
-                "Reminder"
-            ),
-            time: String(item.time || ""),
-            done: Boolean(doneList[index]),
-          }))
-          .filter((item) => !item.done);
-
-        setUpcomingReminder(
-          pending.length > 0
-            ? {
-                title: pending[0].title,
-                time: pending[0].time,
-              }
-            : null
-        );
-      } else {
-        setUpcomingReminder(null);
-      }
-    } catch (error) {
-      console.error(
-        "Failed to load patient dashboard:",
-        error
-      );
+    if (gameHistory.length > 0) {
+      generateCognitiveAIReport(gameHistory)
+        .then((report) => {
+          setAiReport(report);
+          console.log(
+            "PATIENT GEMINI AI COGNITIVE REPORT:",
+            report
+          );
+        })
+        .catch((error) => {
+          console.error(
+            "Patient AI report failed:",
+            error
+          );
+        });
     }
-  };
 
-  loadDashboardData();
-}, []);
+    let totalStars = 0;
 
-  
+        const completedDates = new Set<string>();
+        const todayGames = new Set<string>();
+
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        const todayKey =
+          today.toLocaleDateString("en-CA");
+
+        snapshot.docs.forEach((gameDoc) => {
+          const data = gameDoc.data();
+
+          totalStars += Number(
+            data.starsEarned ||
+              data.stars ||
+              0
+          );
+
+          const completedAt =
+            data.completedAt?.toDate?.()
+              ? data.completedAt.toDate()
+              : new Date();
+
+          const gameDate = new Date(completedAt);
+          gameDate.setHours(0, 0, 0, 0);
+
+          const dateKey =
+            gameDate.toLocaleDateString("en-CA");
+
+          completedDates.add(dateKey);
+
+          if (dateKey === todayKey) {
+            const gameName = String(
+              data.gameName ||
+                data.gameType ||
+                "Cognitive Game"
+            );
+
+            todayGames.add(gameName);
+          }
+        });
+
+        setStars(totalStars);
+        setTodayCompletedGames(todayGames);
+
+        // ─── Streak ─────────────────────────────
+
+        const yesterday = new Date(today);
+        yesterday.setDate(
+          yesterday.getDate() - 1
+        );
+
+        const yesterdayKey =
+          yesterday.toLocaleDateString("en-CA");
+
+        const startDate = completedDates.has(todayKey)
+          ? today
+          : completedDates.has(yesterdayKey)
+          ? yesterday
+          : null;
+
+        let currentStreak = 0;
+
+        if (startDate) {
+          const checkDate = new Date(startDate);
+
+          while (true) {
+            const dateKey =
+              checkDate.toLocaleDateString("en-CA");
+
+            if (!completedDates.has(dateKey)) {
+              break;
+            }
+
+            currentStreak++;
+
+            checkDate.setDate(
+              checkDate.getDate() - 1
+            );
+          }
+        }
+
+        setStreak(currentStreak);
+
+        // ─── Badges ─────────────────────────────
+
+        setBadges(
+          Math.min(
+            todayGames.size +
+              (currentStreak >= 3 ? 1 : 0),
+            6
+          )
+        );
+
+        // ─── Reminder ──────────────────────────
+
+        const reminderSnapshot = await getDoc(
+          doc(
+            db,
+            "patients",
+            user.uid,
+            "reminders",
+            "today"
+          )
+        );
+
+        if (reminderSnapshot.exists()) {
+          const reminderData =
+            reminderSnapshot.data();
+
+          const reminderList =
+            Array.isArray(
+              reminderData.reminders
+            )
+              ? reminderData.reminders
+              : [];
+
+          const doneList =
+            Array.isArray(
+              reminderData.done
+            )
+              ? reminderData.done
+              : [];
+
+          const pending = reminderList
+            .map(
+              (item: any, index: number) => ({
+                title: String(
+                  item.label ||
+                    item.title ||
+                    "Reminder"
+                ),
+                time: String(
+                  item.time || ""
+                ),
+                done: Boolean(
+                  doneList[index]
+                ),
+              })
+            )
+            .filter(
+              (item) => !item.done
+            );
+
+          setUpcomingReminder(
+            pending.length > 0
+              ? {
+                  title: pending[0].title,
+                  time: pending[0].time,
+                }
+              : null
+          );
+        }
+      } catch (error) {
+        console.error(
+          "Failed to load dashboard:",
+          error
+        );
+      }
+    };
+
+    loadDashboardData();
+  }, []);
+
+  // ─── Four Cognitive Activities ───────────────
+
+  const fourGames = [
+    {
+      id: "memory-match" as Screen,
+      title: "Memory Match",
+      domain: "Working Memory",
+      desc: "Card matching & visual pairs",
+      icon: "🃏",
+      level: memoryLevel,
+      bg: "bg-purple-50",
+      border: "border-purple-200/80",
+      isCompleted:
+        todayCompletedGames.has(
+          "Memory Match"
+        ),
+    },
+    {
+      id: "focus-finder" as Screen,
+      title: "Focus Finder",
+      domain: "Attention Focus",
+      desc: "Spot target symbols quickly",
+      icon: "🎯",
+      level: focusLevel,
+      bg: "bg-teal-50",
+      border: "border-teal-200/80",
+      isCompleted:
+        todayCompletedGames.has(
+          "Focus Finder"
+        ),
+    },
+    {
+      id: "daily-life-recall" as Screen,
+      title: "Daily Life Recall",
+      domain: "Routine Recall",
+      desc: "Order everyday routine steps",
+      icon: "🗓️",
+      level: recallLevel,
+      bg: "bg-amber-50",
+      border: "border-amber-200/80",
+      isCompleted:
+        todayCompletedGames.has(
+          "Daily Life Recall"
+        ),
+    },
+    {
+      id: "pattern-path" as Screen,
+      title: "Pattern Path",
+      domain: "Pattern Logic",
+      desc: "Visual sequence reasoning",
+      icon: "🧩",
+      level: patternLevel,
+      bg: "bg-sky-50",
+      border: "border-sky-200/80",
+      isCompleted:
+        todayCompletedGames.has(
+          "Pattern Path"
+        ),
+    },
+  ];
+
+  const completedCount =
+    fourGames.filter(
+      (game) => game.isCompleted
+    ).length;
+
+  const progress =
+    (completedCount / 4) * 100;
+
+  const nextGame =
+    fourGames.find(
+      (game) => !game.isCompleted
+    ) || fourGames[0];
+
   return (
     <div className="h-full flex flex-col bg-[#F8FAFB] overflow-y-auto">
       <StatusBar />
-      {/* Header */}
+
+      {/* ─── Header ─────────────────────────────── */}
+
       <div className="px-5 pt-2 pb-4 bg-gradient-to-br from-[#2E7D73] to-[#1A5C54] rounded-b-[32px] shadow-md">
+
         <div className="flex items-center justify-between mb-3">
+
           <div>
-            <p className="text-[#A8DADB] text-sm font-medium">{greeting},</p>
-            <h1 className="text-3xl font-extrabold text-white leading-tight">Ravi! 👋</h1>
-            <p className="text-[#D9F4F1] text-sm mt-0.5">Ready for today's little adventure?</p>
+            <p className="text-[#A8DADB] text-sm font-medium">
+              {greeting},
+            </p>
+
+            <h1 className="text-3xl font-extrabold text-white leading-tight">
+              Ravi! 👋
+            </h1>
+
+            <p className="text-[#D9F4F1] text-sm mt-0.5">
+              Ready for today's cognitive journey?
+            </p>
           </div>
-          <button onClick={() => onNav("patient-profile")} className="w-14 h-14 rounded-full bg-[#D9F4F1] flex items-center justify-center shadow">
-            <span className="text-3xl">👴</span>
+
+          <button
+            onClick={() =>
+              onNav("patient-profile")
+            }
+            className="w-14 h-14 rounded-full bg-[#D9F4F1] flex items-center justify-center shadow"
+          >
+            <span className="text-3xl">
+              👴
+            </span>
           </button>
+
         </div>
-        {/* Stats row */}
+
+        {/* Stats */}
+
         <div className="flex gap-3 mt-2">
+
           <div className="flex-1 bg-white/15 rounded-2xl px-4 py-3 flex items-center gap-2">
-            <span className="text-2xl">⭐</span>
+            <span className="text-2xl">
+              ⭐
+            </span>
+
             <div>
-              <p className="text-white font-bold text-lg leading-none">{stars}</p>
-              <p className="text-[#D9F4F1] text-xs">Stars</p>
+              <p className="text-white font-bold text-lg leading-none">
+                {stars}
+              </p>
+
+              <p className="text-[#D9F4F1] text-xs">
+                Stars
+              </p>
             </div>
           </div>
+
           <div className="flex-1 bg-white/15 rounded-2xl px-4 py-3 flex items-center gap-2">
-            <span className="text-2xl">🔥</span>
+            <span className="text-2xl">
+              🔥
+            </span>
+
             <div>
-              <p className="text-white font-bold text-lg leading-none">{streak} days</p>
-              <p className="text-[#D9F4F1] text-xs">Streak</p>
+              <p className="text-white font-bold text-lg leading-none">
+                {streak} days
+              </p>
+
+              <p className="text-[#D9F4F1] text-xs">
+                Streak
+              </p>
             </div>
           </div>
+
           <div className="flex-1 bg-white/15 rounded-2xl px-4 py-3 flex items-center gap-2">
-            <span className="text-2xl">🏅</span>
+            <span className="text-2xl">
+              🏅
+            </span>
+
             <div>
-              <p className="text-white font-bold text-lg leading-none">{badges}</p>
-              <p className="text-[#D9F4F1] text-xs">Badges</p>
+              <p className="text-white font-bold text-lg leading-none">
+                {badges}
+              </p>
+
+              <p className="text-[#D9F4F1] text-xs">
+                Badges
+              </p>
             </div>
           </div>
+
         </div>
       </div>
 
-      <div className="px-5 pt-5 pb-4 flex flex-col gap-4">
-        {/* Daily Brain Quest */}
-        <button onClick={() => onNav("brain-quest")} className="w-full bg-gradient-to-r from-[#7E57C2] to-[#9575CD] rounded-3xl p-5 shadow-md text-left animate-fade-in">
-          <div className="flex items-center justify-between">
+      {/* ─── Main Content ──────────────────────── */}
+
+      <div className="px-5 pt-4 pb-5 flex flex-col gap-4">
+
+        {/* Today's Cognitive Journey */}
+
+        <div className="w-full bg-gradient-to-br from-[#7E57C2] to-[#9575CD] rounded-3xl p-5 shadow-md">
+
+          <div className="flex items-start justify-between">
+
             <div>
-              <p className="text-purple-100 text-sm font-semibold">✨ Today's Quest</p>
-              <h2 className="text-white text-xl font-extrabold mt-1">Daily Brain Quest</h2>
-              <p className="text-purple-100 text-sm mt-1">3 fun activities • 15 min</p>
+              <p className="text-white/80 text-sm font-semibold">
+                ✨ Today's Journey
+              </p>
+
+              <h2 className="text-2xl font-extrabold text-white mt-1">
+                Today's Cognitive Journey
+              </h2>
+
+              <p className="text-white/80 text-sm mt-1">
+                4 personalized activities
+              </p>
             </div>
-            <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center">
-              <span className="text-4xl">🧠</span>
+
+            <div className="w-16 h-16 rounded-2xl bg-white/20 flex items-center justify-center text-4xl">
+              🧠
             </div>
+
           </div>
-          <div className="mt-4 bg-white/20 rounded-full h-2.5">
-            <div
-  className="bg-white rounded-full h-2.5"
-  style={{ width: `${(completedGames / 3) * 100}%` }}
-/>
+
+          {/* Progress */}
+
+          <div className="mt-5">
+
+            <div className="flex justify-between text-white text-sm mb-2">
+              <span>
+                {completedCount} of 4 completed
+              </span>
+
+              <span>
+                {Math.round(progress)}%
+              </span>
+            </div>
+
+            <div className="h-2.5 bg-white/25 rounded-full overflow-hidden">
+
+              <div
+                className="h-full bg-white rounded-full transition-all duration-500"
+                style={{
+                  width: `${progress}%`,
+                }}
+              />
+
+            </div>
+
           </div>
-          <p className="text-purple-100 text-xs mt-1">
-          {completedGames} of 3 completed
+
+          {/* Journey Steps */}
+
+          <div className="grid grid-cols-4 gap-2 mt-5">
+
+            {fourGames.map(
+              (game, index) => (
+                <button
+                  key={game.id}
+                  onClick={() =>
+                    onNav(game.id)
+                  }
+                  className="flex flex-col items-center"
+                >
+
+                  <div
+                    className={`w-12 h-12 rounded-full flex items-center justify-center text-xl ${
+                      game.isCompleted
+                        ? "bg-white text-[#7E57C2]"
+                        : "bg-white/20 text-white"
+                    }`}
+                  >
+                    {game.isCompleted
+                      ? "✓"
+                      : game.icon}
+                  </div>
+
+                  <span className="text-[10px] text-white text-center mt-2 leading-tight">
+                    {index + 1}
+                  </span>
+
+                </button>
+              )
+            )}
+
+          </div>
+
+          {/* Continue */}
+
+          {completedCount < 4 && (
+            <button
+              onClick={() =>
+                onNav(nextGame.id)
+              }
+              className="w-full mt-5 bg-white text-[#6657A5] rounded-2xl py-3.5 font-bold shadow"
+            >
+              Continue Journey →
+            </button>
+          )}
+
+          {completedCount === 4 && (
+            <div className="mt-5 bg-white/15 rounded-2xl p-4 text-center text-white">
+              🎉
+              <p className="font-bold mt-1">
+                Amazing work today!
+              </p>
+            </div>
+          )}
+
+        </div>
+
+        {/* Upcoming Reminder */}
+
+        {upcomingReminder && (
+          <button
+            onClick={() =>
+              onNav("reminders")
+            }
+            className="w-full bg-[#FFF3CD] border border-[#FFD76A] rounded-3xl p-5 text-left flex items-center gap-4"
+          >
+
+            <div className="w-14 h-14 rounded-2xl bg-[#F59E0B] flex items-center justify-center text-3xl">
+              💊
+            </div>
+
+            <div className="flex-1">
+
+              <p className="text-[#8A4B08] text-sm font-semibold">
+                Upcoming reminder
+              </p>
+
+              <h3 className="text-[#7A3E00] text-lg font-bold">
+                {upcomingReminder.title}
+              </h3>
+
+              <p className="text-[#9A5A14] text-sm">
+                Today • {upcomingReminder.time}
+              </p>
+
+            </div>
+
+            <span className="text-[#B7791F] text-xl">
+              →
+            </span>
+
+          </button>
+        )}
+{/* AI Cognitive Report */}
+{aiReport && (
+  <div
+        className="bg-gradient-to-br from-teal-800 to-emerald-700 rounded-3xl p-5 text-white shadow-md cursor-pointer mb-5"
+  >
+    <div className="flex items-center justify-between">
+      <div>
+        <p className="text-xs uppercase tracking-wide font-semibold text-emerald-100">
+          Cognitive AI Report
         </p>
-        </button>
 
-       {/* Upcoming Reminder */}
-{upcomingReminder && (
-  <div className="bg-[#FEF3C7] border border-[#F59E0B]/30 rounded-3xl px-5 py-4 flex items-center gap-4">
-    <div className="w-12 h-12 bg-[#F59E0B] rounded-2xl flex items-center justify-center">
-      <span className="text-2xl">💊</span>
+        <div className="flex items-baseline gap-2 mt-1">
+          <span className="text-3xl font-black">
+            {aiReport.overallScore}/100
+          </span>
+
+          <span className="text-xs bg-white/20 px-2 py-1 rounded-full">
+            AI analyzed
+          </span>
+        </div>
+      </div>
+
+      <div className="w-12 h-12 rounded-2xl bg-white/15 flex items-center justify-center">
+        <Brain className="w-7 h-7" />
+      </div>
     </div>
 
-    <div className="flex-1">
-      <p className="text-[#92400E] font-bold text-base">
-        {upcomingReminder.title}
-      </p>
-      <p className="text-[#B45309] text-sm">
-        Today • {upcomingReminder.time}
-      </p>
-    </div>
+    <p className="text-sm text-emerald-50 mt-3 leading-relaxed">
+      {aiReport.summary}
+    </p>
 
-    <button
-      onClick={() => onNav("reminders")}
-      className="text-[#F59E0B] font-bold text-sm bg-white rounded-xl px-3 py-2 shadow-sm"
-    >
-      View
-    </button>
-  </div>
+    </div>
 )}
 
-        {/* Games section */}
+        {/* Cognitive Activities */}
+
         <div>
+
           <div className="flex items-center justify-between mb-3">
-            <h3 className="text-[#37474F] text-lg font-extrabold">Today's Games</h3>
-            <span className="text-[#78909C] text-sm font-medium">See all</span>
+
+            <div>
+              <h2 className="text-xl font-extrabold text-[#37474F]">
+                Cognitive Activities
+              </h2>
+
+              <p className="text-sm text-[#78909C]">
+                AI-personalized for Ravi
+              </p>
+            </div>
+
+            <button
+              onClick={() =>
+                onNav("brain-quest")
+              }
+              className="text-[#2E7D73] font-semibold text-sm"
+            >
+              See all →
+            </button>
+
           </div>
+
           <div className="grid grid-cols-2 gap-3">
-            <button onClick={() => onNav("memory-match")} className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100 flex flex-col items-center gap-2 active:scale-95 transition-transform">
-              <div className="w-14 h-14 bg-[#EDE7F6] rounded-2xl flex items-center justify-center">
-                <span className="text-3xl">🃏</span>
-              </div>
-              <p className="text-[#37474F] font-bold text-sm text-center">Memory Match</p>
-              <div className="flex gap-1">
-                {[1,2,3].map(s => <span key={s} className="text-[#F59E0B] text-xs">⭐</span>)}
-              </div>
-            </button>
-            <button onClick={() => onNav("picture-recall")} className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100 flex flex-col items-center gap-2 active:scale-95 transition-transform">
-              <div className="w-14 h-14 bg-[#FFF3E0] rounded-2xl flex items-center justify-center">
-                <span className="text-3xl">🖼️</span>
-              </div>
-              <p className="text-[#37474F] font-bold text-sm text-center">Picture Recall</p>
-              <div className="flex gap-1">
-                <span className="text-[#F59E0B] text-xs">⭐</span>
-                <span className="text-gray-200 text-xs">⭐</span>
-                <span className="text-gray-200 text-xs">⭐</span>
-              </div>
-            </button>
-            <button onClick={() => onNav("familiar-place")} className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100 flex flex-col items-center gap-2 active:scale-95 transition-transform">
-              <div className="w-14 h-14 bg-[#E3F2FD] rounded-2xl flex items-center justify-center">
-                <span className="text-3xl">🏡</span>
-              </div>
-              <p className="text-[#37474F] font-bold text-sm text-center">Familiar Place</p>
-              <div className="flex gap-1">
-                <span className="text-[#F59E0B] text-xs">⭐</span>
-                <span className="text-gray-200 text-xs">⭐</span>
-                <span className="text-gray-200 text-xs">⭐</span>
-              </div>
-            </button>
+
+            {fourGames.map(
+              (game) => (
+                <button
+                  key={game.id}
+                  onClick={() =>
+                    onNav(game.id)
+                  }
+                  className={`${game.bg} ${game.border} border rounded-3xl p-4 text-left shadow-sm`}
+                >
+
+                  <div className="flex items-start justify-between">
+
+                    <div className="w-12 h-12 rounded-2xl bg-white flex items-center justify-center text-2xl shadow-sm">
+                      {game.icon}
+                    </div>
+
+                    {game.isCompleted && (
+                      <span className="w-7 h-7 rounded-full bg-[#43A047] text-white flex items-center justify-center text-sm font-bold">
+                        ✓
+                      </span>
+                    )}
+
+                  </div>
+
+                  <h3 className="font-bold text-[#37474F] mt-3 leading-tight">
+                    {game.title}
+                  </h3>
+
+                  <p className="text-[#607D8B] text-xs mt-1">
+                    {game.domain}
+                  </p>
+
+                  <p className="text-[#78909C] text-xs mt-2">
+                    {game.desc}
+                  </p>
+
+                  <div className="flex items-center justify-between mt-3">
+
+                    <span className="px-2 py-1 rounded-full bg-white text-[#6657A5] text-[11px] font-bold">
+                      Level {game.level}
+                    </span>
+
+                    <span className="text-[#78909C]">
+                      →
+                    </span>
+
+                  </div>
+
+                  {game.isCompleted && (
+                    <p className="text-[#43A047] text-[10px] font-bold mt-2">
+                      Completed today
+                    </p>
+                  )}
+
+                </button>
+              )
+            )}
+
           </div>
+
         </div>
 
         {/* Memory Garden */}
-        <button onClick={() => onNav("memory-garden")} className="w-full bg-gradient-to-r from-[#43A047] to-[#388E3C] rounded-3xl p-5 shadow-md text-left active:scale-95 transition-transform">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-green-100 text-sm font-semibold">🌱 Grow & Remember</p>
-              <h3 className="text-white text-xl font-extrabold mt-1">Memory Garden</h3>
-              <p className="text-green-100 text-sm mt-1">5 plants growing</p>
+
+        <button
+          onClick={() =>
+            onNav("memory-garden")
+          }
+          className="w-full bg-[#EAF5EE] rounded-3xl p-5 text-left"
+        >
+
+          <div className="flex items-center gap-4">
+
+            <div className="w-14 h-14 rounded-2xl bg-white flex items-center justify-center text-3xl">
+              🌱
             </div>
-            <div className="flex gap-1">
-              <span className="text-3xl animate-bounce-gentle">🌸</span>
-              <span className="text-3xl animate-bounce-gentle" style={{animationDelay:"0.3s"}}>🌺</span>
-              <span className="text-2xl animate-bounce-gentle" style={{animationDelay:"0.6s"}}>🌿</span>
+
+            <div className="flex-1">
+
+              <h2 className="text-lg font-extrabold text-[#315B45]">
+                Memory Garden
+              </h2>
+
+              <p className="text-sm text-[#5D7868] mt-1">
+                Water your garden and watch your memories grow.
+              </p>
+
             </div>
+
+            <span className="text-[#5D7868] text-xl">
+              →
+            </span>
+
           </div>
+
         </button>
 
-        {/* Big action buttons */}
+{/* Cognitive AI Report */}
+
+// AI report card will go here
+
+{/* Sahara.AI + SOS */}
+
         <div className="grid grid-cols-2 gap-3">
-          <button onClick={() => onNav("voice-assistant")} className="bg-[#D9F4F1] border-2 border-[#2E7D73]/20 rounded-3xl py-5 flex flex-col items-center gap-2 active:scale-95 transition-transform shadow-sm">
-            <div className="w-14 h-14 bg-[#2E7D73] rounded-full flex items-center justify-center shadow-md relative">
-              <div className="absolute inset-0 rounded-full bg-[#2E7D73] animate-ping opacity-20" />
-              <span className="text-3xl">🎤</span>
-            </div>
-            <p className="text-[#2E7D73] font-extrabold text-base">Voice Help</p>
+
+          <button
+            onClick={() =>
+              onNav("voice-assistant")
+            }
+            className="bg-[#F1ECFA] rounded-3xl p-5 text-left"
+          >
+
+            <span className="text-3xl">
+              🤖
+            </span>
+
+            <h3 className="font-extrabold text-[#574A8D] mt-3">
+              Sahara.AI
+            </h3>
+
+            <p className="text-xs text-[#766B9C] mt-1">
+              Talk, ask questions and get help.
+            </p>
+
           </button>
-          <button className="bg-[#FFEBEE] border-2 border-[#E53935]/20 rounded-3xl py-5 flex flex-col items-center gap-2 active:scale-95 transition-transform shadow-sm">
-            <div className="w-14 h-14 bg-[#E53935] rounded-full flex items-center justify-center shadow-md">
-              <span className="text-3xl">🆘</span>
-            </div>
-            <p className="text-[#E53935] font-extrabold text-base">SOS Help</p>
+
+          <button
+            onClick={() =>
+              onNav("voice-assistant")
+            }
+            className="bg-[#FFF0F0] rounded-3xl p-5 text-left"
+          >
+
+            <span className="text-3xl">
+              🆘
+            </span>
+
+            <h3 className="font-extrabold text-[#B64B4B] mt-3">
+              SOS Help
+            </h3>
+
+            <p className="text-xs text-[#9D6A6A] mt-1">
+              Get help when you need it.
+            </p>
+
           </button>
+
         </div>
 
-        <div className="h-4" />
       </div>
     </div>
   );
 }
-
 // ─── Brain Quest ──────────────────────────────────────────────────────────────
 function BrainQuest({ onBack }: { onBack: () => void }) {
   const [step, setStep] = useState(0);
@@ -513,108 +976,461 @@ function BrainQuest({ onBack }: { onBack: () => void }) {
 }
 
 // ─── Memory Match ─────────────────────────────────────────────────────────────
-const EMOJIS = ["🌸","🦋","🌈","🐶","🏡","☕","🎵","🌻"];
+
+const ALL_MATCH_EMOJIS = [
+  "🌸",
+  "🦋",
+  "🌈",
+  "🐶",
+  "🏡",
+  "☕",
+  "🎵",
+  "🌻",
+];
+
 function MemoryMatch({ onBack }: { onBack: () => void }) {
-  const [cards] = useState(() => {
-    const pairs = [...EMOJIS, ...EMOJIS];
-    return pairs.sort(() => Math.random()-0.5).map((e,i) => ({id:i, emoji:e, flipped:false, matched:false}));
-  });
-  const [state, setState] = useState(cards);
-  const [first, setFirst] = useState<number|null>(null);
-  const [second, setSecond] = useState<number|null>(null);
+  const [level, setLevel] = useState<MemoryMatchLevel>(() =>
+    getDailyAdaptiveLevel()
+  );
+
+  const numPairs = PAIRS_PER_LEVEL[level];
+
+  const generateCards = (lvl: MemoryMatchLevel) => {
+    const pairsCount = PAIRS_PER_LEVEL[lvl];
+
+    const selectedEmojis = ALL_MATCH_EMOJIS.slice(
+      0,
+      pairsCount
+    );
+
+    const pairs = [
+      ...selectedEmojis,
+      ...selectedEmojis,
+    ];
+
+    return pairs
+      .sort(() => Math.random() - 0.5)
+      .map((emoji, index) => ({
+        id: index,
+        emoji,
+        flipped: false,
+        matched: false,
+      }));
+  };
+
+  const [cards, setCards] = useState(() =>
+    generateCards(level)
+  );
+
+  const [first, setFirst] =
+    useState<number | null>(null);
+
   const [locked, setLocked] = useState(false);
+
   const [moves, setMoves] = useState(0);
-  const matched = state.filter(c => c.matched).length;
+
+  const [incorrectAttempts, setIncorrectAttempts] =
+    useState(0);
+
+  const [hesitationCount, setHesitationCount] =
+    useState(0);
+
+  const [adaptiveResult, setAdaptiveResult] =
+    useState<AdaptiveResult | null>(null);
+
+  const startTimeRef = useRef(Date.now());
+
+  const hesitationStartRef =
+    useRef<number | null>(null);
+
+  const resultSaved = useRef(false);
+
+  const matched = cards.filter(
+    (card) => card.matched
+  ).length;
+
+  const allMatched =
+    matched === cards.length;
+
+  useEffect(() => {
+    hesitationStartRef.current = Date.now();
+  }, [level]);
 
   const flip = (id: number) => {
-    if (locked || state[id].flipped || state[id].matched) return;
-    const next = state.map((c,i) => i===id ? {...c, flipped:true} : c);
-    setState(next);
-    if (first === null) { setFirst(id); return; }
-    setSecond(id);
-    setMoves(m => m+1);
+    if (
+      locked ||
+      cards[id].flipped ||
+      cards[id].matched
+    ) {
+      return;
+    }
+
+    if (hesitationStartRef.current !== null) {
+      const hesitationSeconds =
+        (Date.now() -
+          hesitationStartRef.current) /
+        1000;
+
+      if (hesitationSeconds >= 5) {
+        setHesitationCount(
+          (count) => count + 1
+        );
+      }
+    }
+
+    hesitationStartRef.current = Date.now();
+
+    const next = cards.map((card, index) =>
+      index === id
+        ? {
+            ...card,
+            flipped: true,
+          }
+        : card
+    );
+
+    setCards(next);
+
+    if (first === null) {
+      setFirst(id);
+      return;
+    }
+
+    setMoves(
+      (moves) => moves + 1
+    );
+
     setLocked(true);
+
     setTimeout(() => {
-      setState(prev => {
-        const isMatch = prev[first!].emoji === prev[id].emoji;
-        return prev.map((c,i) => i===first || i===id ? {...c, matched:isMatch, flipped:isMatch?true:false} : c);
+      setCards((previous) => {
+        const isMatch =
+          previous[first].emoji ===
+          previous[id].emoji;
+
+        if (!isMatch) {
+          setIncorrectAttempts(
+            (attempts) =>
+              attempts + 1
+          );
+        }
+
+        return previous.map(
+          (card, index) =>
+            index === first ||
+            index === id
+              ? {
+                  ...card,
+                  matched: isMatch,
+                  flipped: isMatch,
+                }
+              : card
+        );
       });
-      setFirst(null); setSecond(null); setLocked(false);
+
+      setFirst(null);
+      setLocked(false);
+
+      hesitationStartRef.current =
+        Date.now();
     }, 900);
   };
 
-  const allMatched = matched === state.length;
-  const resultSaved = useRef(false);
+  // ─── Evaluate completed round ─────────────────────────────────────────────
 
-useEffect(() => {
-  if (!allMatched || resultSaved.current) return;
-
-  const user = auth.currentUser;
-
-  if (!user) {
-    console.error("No authenticated patient found.");
-    return;
-  }
-
-  resultSaved.current = true;
-
-  addDoc(
-    collection(db, "patients", user.uid, "gameResults"),
-    {
-      gameName: "Memory Match",
-      score: 20,
-      moves,
-      starsEarned: 20,
-      completedAt: serverTimestamp(),
+  useEffect(() => {
+    if (
+      !allMatched ||
+      resultSaved.current
+    ) {
+      return;
     }
-  ).catch((error) => {
-    console.error("Failed to save Memory Match result:", error);
+
+    const user = auth.currentUser;
+
+    if (!user) {
+      console.error(
+        "No authenticated patient found."
+      );
+      return;
+    }
+
+    resultSaved.current = true;
+
+    const now = Date.now();
+
+    const completionTimeMs =
+      startTimeRef.current > 0
+        ? now - startTimeRef.current
+        : 8000;
+
+    const completionTimeSeconds =
+      Math.max(
+        1,
+        Math.round(
+          completionTimeMs / 1000
+        )
+      );
+
+    const averageResponseTime =
+      moves > 0
+        ? Number(
+            (
+              completionTimeSeconds /
+              moves
+            ).toFixed(1)
+          )
+        : 2.0;
+
+    const accuracy = Math.min(
+      100,
+      Math.max(
+        10,
+        Math.round(
+          (numPairs /
+            Math.max(moves, 1)) *
+            100
+        )
+      )
+    );
+
+    const evaluation =
+      evaluateMemoryMatchPerformance({
+        currentLevel: level,
+        moves,
+        pairsCount: numPairs,
+        incorrectAttempts,
+        accuracy,
+        completionTimeSeconds,
+        averageResponseTimeSeconds:
+          averageResponseTime,
+        hesitationCount,
+      });
+
+    setAdaptiveResult(
+      evaluation
+    );
+
+    saveDailyAdaptiveLevel(
+      evaluation.nextLevel
+    );
+
+    saveGameTelemetryWithSync({
+      gameId: "memory-match",
+      gameName: "Memory Match",
+      cognitiveDomain: "Memory",
+
+      difficultyLevel: level,
+
+      score: 20,
+      maxScore: 20,
+      starsEarned: 20,
+
+      moves,
+      pairsCount: numPairs,
+
+      accuracy,
+      incorrectAttempts,
+
+      hintsUsed: 0,
+      hesitationCount,
+
+      completionTimeSeconds,
+      averageResponseTimeSeconds:
+        averageResponseTime,
+
+      nextDifficultyLevel:
+        evaluation.nextLevel,
+
+      completionStatus: "completed",
+
+      clientSubmissionId:
+        `mm_${user.uid}_${now}`,
+    }).catch((error) => {
+      console.error(
+        "Failed to save adaptive Memory Match telemetry:",
+        error
+      );
+    });
+  }, [
+    allMatched,
+    moves,
+    level,
+    numPairs,
+    incorrectAttempts,
+    hesitationCount,
+  ]);
+
+  // ─── Start next adaptive round ────────────────────────────────────────────
+
+  const startNextRound = () => {
+    const nextLevel =
+      adaptiveResult?.nextLevel ??
+      level;
+
+    setLevel(nextLevel);
+
+    setCards(
+      generateCards(nextLevel)
+    );
+
+    setFirst(null);
+    setLocked(false);
+    setMoves(0);
+    setIncorrectAttempts(0);
+    setHesitationCount(0);
+
+    setAdaptiveResult(null);
+
     resultSaved.current = false;
-  });
-}, [allMatched, moves]);
+
+    startTimeRef.current =
+      Date.now();
+
+    hesitationStartRef.current =
+      Date.now();
+  };
 
   return (
     <div className="h-full flex flex-col bg-[#F8FAFB]">
       <StatusBar />
+
       <div className="bg-gradient-to-br from-[#7E57C2] to-[#512DA8] px-5 pt-2 pb-5 rounded-b-[32px]">
         <div className="flex items-center gap-3 mb-3">
-          <BackButton onBack={onBack} light />
-          <h2 className="text-white text-xl font-extrabold">Memory Match</h2>
+          <BackButton
+            onBack={onBack}
+            light
+          />
+
+          <div className="flex-1">
+            <h2 className="text-white text-xl font-extrabold">
+              Memory Match
+            </h2>
+
+            <p className="text-purple-100 text-xs mt-1">
+              Difficulty Level: {level}
+            </p>
+          </div>
+
+          <div className="bg-white/20 px-3 py-2 rounded-xl">
+            <p className="text-white text-xs font-bold">
+              Level {level}
+            </p>
+          </div>
         </div>
+
         <div className="flex gap-3">
           <div className="flex-1 bg-white/20 rounded-2xl py-3 text-center">
-            <p className="text-purple-100 text-xs">Pairs Found</p>
-            <p className="text-white text-2xl font-extrabold">{matched/2}</p>
+            <p className="text-purple-100 text-xs">
+              Difficulty
+            </p>
+
+            <p className="text-white text-2xl font-extrabold">
+              {level}
+            </p>
           </div>
+
           <div className="flex-1 bg-white/20 rounded-2xl py-3 text-center">
-            <p className="text-purple-100 text-xs">Moves</p>
-            <p className="text-white text-2xl font-extrabold">{moves}</p>
+            <p className="text-purple-100 text-xs">
+              Pairs Found
+            </p>
+
+            <p className="text-white text-2xl font-extrabold">
+              {matched / 2}/{numPairs}
+            </p>
+          </div>
+
+          <div className="flex-1 bg-white/20 rounded-2xl py-3 text-center">
+            <p className="text-purple-100 text-xs">
+              Moves
+            </p>
+
+            <p className="text-white text-2xl font-extrabold">
+              {moves}
+            </p>
           </div>
         </div>
       </div>
+
       {allMatched ? (
-        <div className="flex-1 flex flex-col items-center justify-center px-6 gap-5">
-          <span className="text-7xl animate-bounce-gentle">🎉</span>
-          <h2 className="text-3xl font-extrabold text-[#37474F]">Great job!</h2>
-          <p className="text-[#78909C] text-lg text-center">You matched all the pairs in {moves} moves!</p>
+        <div className="flex-1 flex flex-col items-center justify-center px-6 gap-5 overflow-y-auto">
+          <span className="text-7xl animate-bounce-gentle">
+            🎉
+          </span>
+
+          <h2 className="text-3xl font-extrabold text-[#37474F]">
+            Great job!
+          </h2>
+
+          <p className="text-[#78909C] text-lg text-center">
+            You matched all {numPairs} pairs
+            in {moves} moves!
+          </p>
+
           <div className="bg-[#E8F5E9] rounded-2xl px-6 py-3">
-            <p className="text-[#43A047] font-bold text-lg">+20 Stars Earned! ⭐</p>
+            <p className="text-[#43A047] font-bold text-lg">
+              +20 Stars Earned! ⭐
+            </p>
           </div>
-          <button onClick={onBack} className="w-full py-5 bg-[#7E57C2] text-white text-xl font-bold rounded-2xl">Back to Home</button>
+
+          {adaptiveResult && (
+            <div className="w-full bg-[#EDE7F6] rounded-2xl p-5 text-center">
+              <p className="text-[#512DA8] font-extrabold text-lg">
+                {adaptiveResult.feedbackMessage}
+              </p>
+
+              <p className="text-[#78909C] text-sm mt-2">
+                {adaptiveResult.supportiveNote}
+              </p>
+
+              <div className="mt-3">
+                <span className="text-[#512DA8] font-bold">
+                  Performance Score:{" "}
+                  {adaptiveResult.normalizedScore}/100
+                </span>
+              </div>
+            </div>
+          )}
+
+          <button
+            onClick={startNextRound}
+            className="w-full py-5 bg-[#7E57C2] text-white text-xl font-bold rounded-2xl"
+          >
+            Play Next Round
+          </button>
+
+          <button
+            onClick={onBack}
+            className="w-full py-4 bg-white border-2 border-[#D9F4F1] text-[#512DA8] text-lg font-bold rounded-2xl"
+          >
+            Back to Home
+          </button>
         </div>
       ) : (
-        <div className="flex-1 px-4 pt-5 grid grid-cols-4 gap-3 content-start">
-          {state.map((card) => (
+        <div className="flex-1 px-4 pt-5 grid grid-cols-4 gap-3 content-start overflow-y-auto">
+          {cards.map((card) => (
             <button
               key={card.id}
-              onClick={() => flip(card.id)}
+              onClick={() =>
+                flip(card.id)
+              }
               className={`aspect-square rounded-2xl flex items-center justify-center text-3xl font-bold transition-all duration-300 shadow-sm ${
-                card.flipped || card.matched
-                  ? card.matched ? "bg-[#E8F5E9] scale-95" : "bg-[#EDE7F6]"
+                card.flipped ||
+                card.matched
+                  ? card.matched
+                    ? "bg-[#E8F5E9] scale-95"
+                    : "bg-[#EDE7F6]"
                   : "bg-white border-2 border-[#D9F4F1] active:scale-95"
               }`}
             >
-              {card.flipped || card.matched ? card.emoji : <span className="text-[#D9F4F1] text-2xl">?</span>}
+              {card.flipped ||
+              card.matched ? (
+                card.emoji
+              ) : (
+                <span className="text-[#D9F4F1] text-2xl">
+                  ?
+                </span>
+              )}
             </button>
           ))}
         </div>
@@ -622,7 +1438,6 @@ useEffect(() => {
     </div>
   );
 }
-
 // ─── Memory Garden ────────────────────────────────────────────────────────────
 const PLANTS = [
   { emoji: "🌸", name: "Cherry Blossom", memory: "Your favorite childhood tree", stage: 3 },
@@ -969,186 +1784,6 @@ const getWeather = async (city: string) => {
   return `The current weather in ${location.name} is ${current.temperature_2m}°C. It feels like ${current.apparent_temperature}°C, with ${current.relative_humidity_2m}% humidity and wind speed of ${current.wind_speed_10m} km/h.`;
 };
 
-const askGemini = async (question: string) => {
-  const apiKey = (import.meta as any).env?.VITE_GEMINI_API_KEY;
-
-  if (!apiKey) {
-    setResponse("AI is not configured yet.");
-    return;
-  }
-
-  try {
-    setThinking(true);
-    setResponse(null);
-
-    const user = auth.currentUser;
-    let liveWeather = "";
-
-if (
-  question.toLowerCase().includes("weather") ||
-  question.toLowerCase().includes("temperature")
-) {
-  liveWeather = await getWeather("Bangalore");
-}
-
-    const now = new Date();
-
-    const currentDate = now.toLocaleDateString("en-IN", {
-      weekday: "long",
-      day: "numeric",
-      month: "long",
-      year: "numeric",
-    });
-
-    const currentTime = now.toLocaleTimeString("en-IN", {
-      hour: "numeric",
-      minute: "2-digit",
-      hour12: true,
-    });
-
-    let reminderContext = "No reminder data available.";
-    let gameContext = "No game results available.";
-
-    if (user) {
-      try {
-        const reminderDoc = await getDoc(
-          doc(db, "patients", user.uid, "reminders", "today")
-        );
-
-        if (reminderDoc.exists()) {
-          reminderContext = JSON.stringify(reminderDoc.data());
-        }
-
-        const gameSnapshot = await getDocs(
-          collection(db, "patients", user.uid, "gameResults")
-        );
-
-        const games = gameSnapshot.docs.map((gameDoc) => ({
-          id: gameDoc.id,
-          ...gameDoc.data(),
-        }));
-
-        if (games.length > 0) {
-          gameContext = JSON.stringify(games);
-        }
-      } catch (firebaseError) {
-        console.error(
-          "Failed to load MemoryNest data:",
-          firebaseError
-        );
-      }
-    }
-
-    const ai = new GoogleGenAI({ apiKey });
-
-    const prompt = `
-You are MemoryNest, the personal AI cognitive assistant
-for an elderly user named Ravi Kumar.
-You are also a friendly conversational assistant.
-
-If Ravi greets you, respond naturally and warmly.
-
-Examples:
-- "Good morning" → "Good morning, Ravi! I hope you have a wonderful day. Would you like to play a memory game or check your reminders?"
-- "Good afternoon" → "Good afternoon, Ravi! How are you doing today?"
-- "Good evening" → "Good evening, Ravi! How was your day?"
-- "Hello" → "Hello, Ravi! How can I help you today?"
-- "Hi" → "Hi, Ravi! It is nice to hear from you."
-
-Do not say that a greeting is an invalid question.
-
-Answer the user's actual question directly.
-
-You can answer normal questions naturally, including:
-- general knowledge
-- science
-- history
-- geography
-- technology
-- mathematics
-- current date and time when supplied by the app
-- everyday advice
-- simple explanations
-- casual conversation
-- jokes and stories
-- memory assistance
-- reminders
-- daily activities
-- cognitive exercises
-
-Answer the user's question directly and accurately.
-If the question is a normal general question, answer it normally.
-Do not say that you are unable to answer just because it is not
-related to MemoryNest.
-
-For information that requires live data, such as current weather,
-live news, live sports scores, traffic, or current prices, clearly
-say that live information is not connected yet.
-
-Use simple, short and reassuring language.
-
-IMPORTANT:
-- Do not invent information.
-- Use the supplied current date and time for date/time questions.
-- Use Ravi's reminder data when relevant.
-- Use Ravi's cognitive game results when relevant.
-- If information is unavailable, say so.
-- Do not claim to make calls or perform actions that are not connected.
-- "Call Priya" is not connected yet.
-- Never diagnose medical conditions.
-- For emergencies, tell Ravi to contact his caregiver
-  or emergency services.
-
-CURRENT DATE:
-${currentDate}
-
-CURRENT TIME:
-${currentTime}
-
-RAVI'S MEMORYNEST REMINDERS:
-${reminderContext}
-
-RAVI'S COGNITIVE GAME RESULTS:
-${gameContext}
-
-LIVE WEATHER:
-${liveWeather || "Not requested"}
-
-USER QUESTION:
-${question}
-`;
-
-    const result = await ai.interactions.create({
-      model: "gemini-3.7-flash",
-      input: prompt,
-      store: false,
-    });
-
-    const answer =
-      result.output_text?.trim() ||
-      "I'm sorry, I couldn't answer that right now.";
-
-    setResponse(answer);
-
-    window.speechSynthesis.cancel();
-
-    const speech = new SpeechSynthesisUtterance(answer);
-    speech.lang = "en-IN";
-    speech.rate = 0.9;
-    speech.pitch = 1;
-
-    window.speechSynthesis.speak(speech);
-
-  } catch (error) {
-    console.error("Gemini error:", error);
-
-    setResponse(
-      "Sorry Ravi, I couldn't connect to the AI right now."
-    );
-  } finally {
-    setThinking(false);
-  }
-};
 const startVoice = () => {
   const SpeechRecognition =
     (window as any).SpeechRecognition ||
@@ -1177,7 +1812,7 @@ const startVoice = () => {
     setTranscript(text);
     setListening(false);
 
-    askGemini(text);
+    setResponse("Your voice was heard. AI assistance will be connected later.");
   };
 
   recognition.onerror = (event: any) => {
@@ -1250,7 +1885,7 @@ const toggleListen = () => {
   key={s}
   onClick={() => {
   setTranscript(s);
-askGemini(s);
+setResponse("AI assistance will be connected later.");
 }}
                 className="bg-white rounded-2xl px-5 py-4 text-[#37474F] font-semibold text-base text-left shadow-sm border border-gray-100 active:scale-95 transition-transform">
                 💬 {s}
@@ -1272,116 +1907,119 @@ function PatientProfile({ onBack }: { onBack: () => void }) {
   const [largeText, setLargeText] = useState(true);
   const [voiceReminders, setVoiceReminders] = useState(false);
 
-  const Toggle = ({ value, onChange }: { value: boolean; onChange: () => void }) => (
-    <button onClick={onChange} className={`w-14 h-8 rounded-full transition-all relative ${value ? "bg-[#2E7D73]" : "bg-gray-200"}`}>
-      <div className={`absolute top-1 w-6 h-6 bg-white rounded-full shadow transition-all ${value ? "right-1" : "left-1"}`} />
+  const Toggle = ({
+    value,
+    onChange,
+  }: {
+    value: boolean;
+    onChange: () => void;
+  }) => (
+    <button
+      onClick={onChange}
+      className={`w-14 h-8 rounded-full relative ${
+        value ? "bg-[#2E7D73]" : "bg-gray-200"
+      }`}
+    >
+      <div
+        className={`absolute top-1 w-6 h-6 bg-white rounded-full shadow ${
+          value ? "right-1" : "left-1"
+        }`}
+      />
     </button>
   );
 
   return (
     <div className="h-full flex flex-col bg-[#F8FAFB] overflow-y-auto">
       <StatusBar />
-      <div className="bg-gradient-to-br from-[#2E7D73] to-[#1A5C54] px-5 pt-2 pb-8 rounded-b-[32px]">
-        <div className="flex items-center gap-3 mb-5">
+
+      {/* Profile Header */}
+      <div className="bg-gradient-to-br from-[#2E7D73] to-[#1A5C54] px-5 pt-2 pb-7 rounded-b-[32px]">
+        <div className="flex items-center gap-3">
           <BackButton onBack={onBack} light />
-          <h2 className="text-white text-xl font-extrabold">My Profile</h2>
+          <h2 className="text-white text-xl font-extrabold">
+            My Profile
+          </h2>
         </div>
-        <div className="flex flex-col items-center gap-3">
-          <div className="w-24 h-24 rounded-full bg-[#D9F4F1] flex items-center justify-center shadow-lg">
-            <span className="text-5xl">👴</span>
+
+        <div className="flex flex-col items-center mt-5">
+          <div className="w-20 h-20 rounded-full bg-[#D9F4F1] flex items-center justify-center">
+            <span className="text-4xl">👴</span>
           </div>
-          <div className="text-center">
-            <h3 className="text-white text-2xl font-extrabold">Ravi Kumar</h3>
-            <p className="text-[#D9F4F1] text-sm">Age 72 · Joined March 2024</p>
-          </div>
+
+          <h3 className="text-white text-2xl font-extrabold mt-3">
+            Ravi Kumar
+          </h3>
+
+          <p className="text-[#D9F4F1] text-sm">
+            Age 72
+          </p>
         </div>
       </div>
+
       <div className="px-5 pt-5 flex flex-col gap-4 pb-8">
-        {/* Achievements */}
-        <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100">
-          <h4 className="text-[#37474F] font-extrabold text-lg mb-3">🏅 Achievements</h4>
-          <div className="grid grid-cols-3 gap-3">
-           {[
-  ["🔥", "Current Streak"],
-  ["⭐", "Memory Games"],
-  ["🌸", "Garden"],
-  ["🧠", "Brain Quest"],
-  ["💪", "Daily Progress"],
-  ["💗", "Family"],
-].map(([icon, label]) => (
-              <div key={label} className="bg-[#F8FAFB] rounded-2xl p-3 flex flex-col items-center gap-1">
-                <span className="text-3xl">{icon}</span>
-                <p className="text-[#78909C] text-[10px] font-semibold text-center">{label}</p>
-              </div>
-            ))}
-          </div>
-        </div>
 
-        {/* Stats */}
-        <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100">
-          <h4 className="text-[#37474F] font-extrabold text-lg mb-3">📊 My Progress</h4>
-{[
-  ["Games Completed", "See Home"],
-  ["Total Stars", "See Home"],
-  ["Current Streak", "See Home"],
-  ["Badges Earned", "See Home"],
-].map(([label, val]) => (
-  <div
-    key={label}
-    className="flex justify-between items-center py-3 border-b border-gray-50 last:border-0"
-  >
-    <p className="text-[#78909C] font-medium text-sm">
-      {label}
-    </p>
+       <div className="px-5 pt-5 flex flex-col gap-4 pb-8">
 
-    <p className="text-[#37474F] font-extrabold text-base">
-      {val}
-    </p>
+  {/* Settings */}
+  <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100">
+    
   </div>
-))}
-        </div>
 
-        {/* Family */}
-        <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100">
-          <h4 className="text-[#37474F] font-extrabold text-lg mb-3">👨‍👩‍👧 My Family</h4>
-          {[["👧","Priya Kumar","Daughter"],["👦","Arjun Kumar","Son"],["👩","Meera Kumar","Wife"]].map(([icon,name,role]) => (
-            <div key={name} className="flex items-center gap-3 py-3 border-b border-gray-50 last:border-0">
-              <div className="w-12 h-12 bg-[#D9F4F1] rounded-full flex items-center justify-center text-2xl">{icon}</div>
-              <div>
-                <p className="text-[#37474F] font-bold text-base">{name}</p>
-                <p className="text-[#78909C] text-sm">{role}</p>
-              </div>
-            </div>
-          ))}
-        </div>
+  
+</div>
 
         {/* Settings */}
         <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100">
-          <h4 className="text-[#37474F] font-extrabold text-lg mb-3">⚙️ My Settings</h4>
-          {[
-            { label: "Push Notifications", val: notifications, toggle: () => setNotifications(v => !v) },
-            { label: "Large Text Mode", val: largeText, toggle: () => setLargeText(v => !v) },
-            { label: "Voice Reminders", val: voiceReminders, toggle: () => setVoiceReminders(v => !v) },
-          ].map(item => (
-            <div key={item.label} className="flex items-center justify-between py-3.5 border-b border-gray-50 last:border-0">
-              <p className="text-[#37474F] font-semibold text-sm">{item.label}</p>
-              <Toggle value={item.val} onChange={item.toggle} />
-            </div>
-          ))}
+          <h4 className="text-[#37474F] font-extrabold text-lg mb-3">
+            ⚙️ Settings
+          </h4>
+
+          <div className="flex items-center justify-between py-3 border-b border-gray-50">
+            <span className="text-[#37474F] font-semibold text-sm">
+              Notifications
+            </span>
+            <Toggle
+              value={notifications}
+              onChange={() => setNotifications(v => !v)}
+            />
+          </div>
+
+          <div className="flex items-center justify-between py-3 border-b border-gray-50">
+            <span className="text-[#37474F] font-semibold text-sm">
+              Large Text
+            </span>
+            <Toggle
+              value={largeText}
+              onChange={() => setLargeText(v => !v)}
+            />
+          </div>
+
+          <div className="flex items-center justify-between py-3">
+            <span className="text-[#37474F] font-semibold text-sm">
+              Voice Reminders
+            </span>
+            <Toggle
+              value={voiceReminders}
+              onChange={() => setVoiceReminders(v => !v)}
+            />
+          </div>
         </div>
 
-        {/* Support */}
-        <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100">
-          <h4 className="text-[#37474F] font-extrabold text-base mb-3">Help & Support</h4>
-          {["Help & FAQ","Privacy Policy","Contact Support"].map(item => (
-            <div key={item} className="flex items-center justify-between py-3.5 border-b border-gray-50 last:border-0">
-              <p className="text-[#37474F] font-semibold text-sm">{item}</p>
-              <span className="text-[#90A4AE]">→</span>
-            </div>
-          ))}
-        </div>
+        {/* Logout */}
+        <button
+          onClick={async () => {
+            await signOut(auth);
+            window.location.reload();
+          }}
+          className="w-full py-4 bg-red-50 border-2 border-red-200 text-red-600 text-lg font-bold rounded-2xl"
+        >
+          🚪 Logout
+        </button>
 
-        <p className="text-center text-[#B0BEC5] text-xs pb-2">MemoryNest v2.1.0</p>
+        <p className="text-center text-[#B0BEC5] text-xs">
+          MindSathi
+        </p>
+
       </div>
     </div>
   );
@@ -2216,12 +2854,32 @@ export default function App() {
     switch(screen) {
       case "patient-home": return <PatientHome onNav={nav} />;
       case "brain-quest":     return <BrainQuest onBack={() => nav("patient-home")} />;
-      case "memory-match":    return <MemoryMatch onBack={() => nav("patient-home")} />;
-      case "picture-recall":  return <PictureRecall onBack={() => nav("patient-home")} />;
-      case "familiar-place":  return <FamiliarPlace onBack={() => nav("patient-home")} />;
+      case "memory-match":
+  return <MemoryMatch onBack={() => nav("patient-home")} />;
+
+case "focus-finder":
+  return <FocusFinder onBack={() => nav("patient-home")} />;
+
+case "daily-life-recall":
+  return <DailyLifeRecall onBack={() => nav("patient-home")} />;
+
+case "pattern-path":
+  return <PatternPath onBack={() => nav("patient-home")} />;
+
+case "picture-recall":
+  return <PictureRecall onBack={() => nav("patient-home")} />;
+
+case "familiar-place":
+  return <FamiliarPlace onBack={() => nav("patient-home")} />;
       case "memory-garden":   return <MemoryGarden onBack={() => nav("patient-home")} />;
       case "reminders":       return <Reminders onBack={() => nav("patient-home")} />;
-      case "voice-assistant": return <VoiceAssistant onBack={() => nav("patient-home")} />;
+      case "voice-assistant":
+  return (
+    <SaharaAiAssistant
+      onNav={nav}
+      onBack={() => nav("patient-home")}
+    />
+  );
       case "patient-profile": return <PatientProfile onBack={() => nav("patient-home")} />;
     }
   };
