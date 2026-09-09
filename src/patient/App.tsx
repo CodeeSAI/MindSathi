@@ -25,6 +25,7 @@ import { Brain } from "lucide-react";
 type Screen =
   | "patient-home"
   | "brain-quest"
+  | "games"
   | "memory-match"
   | "focus-finder"
   | "daily-life-recall"
@@ -53,7 +54,7 @@ function StatusBar() {
 function BottomNav({ active, onNav }: { active: string; onNav: (s: Screen) => void }) {
   const items = [
     { icon: "🏠", label: "Home", screen: "patient-home" as Screen },
-    { icon: "🎮", label: "Games", screen: "memory-match" as Screen },
+    { icon: "🎮", label: "Games", screen: "games" as Screen },
     { icon: "🌱", label: "Garden", screen: "memory-garden" as Screen },
     { icon: "⏰", label: "Reminders", screen: "reminders" as Screen },
     { icon: "👤", label: "Profile", screen: "patient-profile" as Screen },
@@ -70,6 +71,117 @@ function BottomNav({ active, onNav }: { active: string; onNav: (s: Screen) => vo
           <span className={`text-[10px] font-semibold ${active === item.screen ? "text-[#2E7D73]" : "text-[#90A4AE]"}`}>{item.label}</span>
         </button>
       ))}
+    </div>
+  );
+}
+function GamesLibrary({ onNav }: { onNav: (s: Screen) => void }) {
+  const games = [
+    {
+      id: "memory-match" as Screen,
+      title: "Memory Match",
+      description: "Match cards and train your memory",
+      icon: "🃏",
+      color: "from-purple-500 to-indigo-600",
+    },
+    {
+      id: "focus-finder" as Screen,
+      title: "Focus Finder",
+      description: "Find the target and improve attention",
+      icon: "🎯",
+      color: "from-teal-500 to-cyan-600",
+    },
+    {
+      id: "daily-life-recall" as Screen,
+      title: "Daily Life Recall",
+      description: "Remember everyday routine activities",
+      icon: "🗓️",
+      color: "from-amber-500 to-orange-600",
+    },
+    {
+      id: "pattern-path" as Screen,
+      title: "Pattern Path",
+      description: "Follow patterns and build reasoning",
+      icon: "🧩",
+      color: "from-sky-500 to-blue-600",
+    },
+    {
+      id: "picture-recall" as Screen,
+      title: "Picture Recall",
+      description: "Remember familiar pictures and objects",
+      icon: "🖼️",
+      color: "from-pink-500 to-rose-600",
+    },
+    {
+      id: "familiar-place" as Screen,
+      title: "Familiar Place",
+      description: "Recognize familiar places and memories",
+      icon: "📍",
+      color: "from-emerald-500 to-green-600",
+    },
+  ];
+
+  return (
+    <div className="h-full flex flex-col bg-[#F8FAFB] overflow-y-auto">
+      
+      {/* Header */}
+      <div className="px-5 pt-5 pb-6 bg-gradient-to-br from-[#2E7D73] to-[#1A5C54] rounded-b-[32px] shadow-md">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => onNav("patient-home")}
+            className="w-10 h-10 rounded-full bg-white/20 text-white flex items-center justify-center text-xl"
+          >
+            ←
+          </button>
+
+          <div>
+            <p className="text-[#A8DADB] text-sm font-medium">
+              Cognitive Training
+            </p>
+
+            <h1 className="text-2xl font-extrabold text-white">
+              All Games 🧠
+            </h1>
+          </div>
+        </div>
+
+        <p className="text-[#D9F4F1] text-sm mt-4">
+          Choose an activity to exercise your memory, focus and thinking.
+        </p>
+      </div>
+
+      {/* Games */}
+      <div className="p-5 space-y-4 pb-8">
+        {games.map((game) => (
+          <button
+            key={game.id}
+            onClick={() => onNav(game.id)}
+            className="w-full text-left bg-white rounded-3xl p-4 shadow-sm border border-gray-100 hover:shadow-md transition"
+          >
+            <div className="flex items-center gap-4">
+              
+              <div
+                className={`w-16 h-16 rounded-2xl bg-gradient-to-br ${game.color} flex items-center justify-center text-3xl shadow-sm`}
+              >
+                {game.icon}
+              </div>
+
+              <div className="flex-1">
+                <h2 className="text-lg font-bold text-gray-800">
+                  {game.title}
+                </h2>
+
+                <p className="text-sm text-gray-500 mt-1">
+                  {game.description}
+                </p>
+              </div>
+
+              <div className="text-gray-400 text-xl">
+                →
+              </div>
+            </div>
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
@@ -719,7 +831,7 @@ function PatientHome({ onNav }: { onNav: (s: Screen) => void }) {
 
             <button
               onClick={() =>
-                onNav("brain-quest")
+                onNav("games")
               }
               className="text-[#2E7D73] font-semibold text-sm"
             >
@@ -829,7 +941,6 @@ function PatientHome({ onNav }: { onNav: (s: Screen) => void }) {
 
 {/* Cognitive AI Report */}
 
-// AI report card will go here
 
 {/* Sahara.AI + SOS */}
 
@@ -2854,6 +2965,8 @@ export default function App() {
     switch(screen) {
       case "patient-home": return <PatientHome onNav={nav} />;
       case "brain-quest":     return <BrainQuest onBack={() => nav("patient-home")} />;
+      case "games":
+  return <GamesLibrary onNav={nav} />;
       case "memory-match":
   return <MemoryMatch onBack={() => nav("patient-home")} />;
 

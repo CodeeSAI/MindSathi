@@ -115,38 +115,32 @@ Rules:
     const parsed = JSON.parse(cleaned);
 
     return {
-      overallScore: Math.max(
-        0,
-        Math.min(
-          100,
-          Number(parsed.overallScore || overallScore)
-        )
-      ),
+  overallScore,
 
-      summary:
-        String(parsed.summary || fallback.summary),
+  summary:
+    String(parsed.summary || fallback.summary),
 
-      strengths:
-        Array.isArray(parsed.strengths)
-          ? parsed.strengths.map(String)
-          : fallback.strengths,
+  strengths:
+    Array.isArray(parsed.strengths)
+      ? parsed.strengths.map(String)
+      : fallback.strengths,
 
-      areasToPractice:
-        Array.isArray(parsed.areasToPractice)
-          ? parsed.areasToPractice.map(String)
-          : fallback.areasToPractice,
+  areasToPractice:
+    Array.isArray(parsed.areasToPractice)
+      ? parsed.areasToPractice.map(String)
+      : fallback.areasToPractice,
 
-      recommendations:
-        Array.isArray(parsed.recommendations)
-          ? parsed.recommendations.map(String)
-          : fallback.recommendations,
+  recommendations:
+    Array.isArray(parsed.recommendations)
+      ? parsed.recommendations.map(String)
+      : fallback.recommendations,
 
-      patientMessage:
-        String(
-          parsed.patientMessage ||
-          fallback.patientMessage
-        ),
-    };
+  patientMessage:
+    String(
+      parsed.patientMessage ||
+      fallback.patientMessage
+    ),
+};
 
   } catch (error) {
     console.error(
