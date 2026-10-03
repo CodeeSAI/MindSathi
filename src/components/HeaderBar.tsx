@@ -1,17 +1,13 @@
 import React from 'react';
 import { PatientStatus } from '../types';
-import { Shield, Smartphone, Code2, AlertTriangle, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Shield, AlertTriangle, CheckCircle2, AlertCircle } from 'lucide-react';
 
 interface HeaderBarProps {
-  viewMode: 'app' | 'code';
-  setViewMode: (mode: 'app' | 'code') => void;
   patientStatus: PatientStatus;
   onTriggerSos: () => void;
 }
 
 export const HeaderBar: React.FC<HeaderBarProps> = ({
-  viewMode,
-  setViewMode,
   patientStatus,
   onTriggerSos,
 }) => {
@@ -68,35 +64,6 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
             <AlertTriangle className="w-3.5 h-3.5" />
             <span>SOS Alert</span>
           </button>
-
-          {/* View Mode Switcher: Mobile App vs Flutter Source Code */}
-          <div className="flex items-center p-1 bg-slate-100 rounded-xl border border-slate-200">
-            <button
-              onClick={() => setViewMode('app')}
-              id="switch-to-app-view-btn"
-              className={`min-h-9 flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold transition-all ${
-                viewMode === 'app'
-                  ? 'bg-white text-emerald-700 shadow-xs border border-slate-200/80'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <Smartphone className="w-3.5 h-3.5" />
-              <span>Live App</span>
-            </button>
-            <button
-              onClick={() => setViewMode('code')}
-              id="switch-to-code-view-btn"
-              className={`min-h-9 flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold transition-all ${
-                viewMode === 'code'
-                  ? 'bg-white text-emerald-700 shadow-xs border border-slate-200/80'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <Code2 className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Flutter Code (Dart)</span>
-              <span className="sm:hidden">Code</span>
-            </button>
-          </div>
         </div>
       </div>
     </header>

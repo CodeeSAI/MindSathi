@@ -42,7 +42,6 @@ import { MemoryProgressView } from "./components/MemoryProgressView";
 import { AlertsSafetyView } from "./components/AlertsSafetyView";
 import { LocationMonitoringView } from "./components/LocationMonitoringView";
 import { PatientProfileView } from "./components/PatientProfileView";
-import { FlutterCodeViewer } from "./components/FlutterCodeViewer";
 import { SosModal } from "./components/SosModal";
 import { AddReminderModal } from "./components/AddReminderModal";
 
@@ -69,7 +68,6 @@ import {
    ========================================================= */
 
 export function App() {
-  const [viewMode, setViewMode] = useState<"app" | "code">("app");
   const [activeTab, setActiveTab] = useState<ActiveTab>("home");
 
   const [patient, setPatient] =
@@ -909,104 +907,94 @@ export function App() {
     <div className="ms-app-shell ms-caregiver-shell min-h-screen bg-slate-100 flex flex-col overflow-x-hidden">
 
       <HeaderBar
-        viewMode={viewMode}
-        setViewMode={setViewMode}
         patientStatus={patient.status}
         onTriggerSos={() =>
           setIsSosModalOpen(true)
         }
       />
 
-      {viewMode === "app" ? (
+      <div className="flex-1 min-h-0 flex flex-col items-center justify-center p-3 sm:p-6">
 
-        <div className="flex-1 min-h-0 flex flex-col items-center justify-center p-3 sm:p-6">
+        <MobileFrame
+          activeTab={activeTab}
+          setActiveTab={setActiveTab}
+          alertCount={
+            unresolvedAlertsCount
+          }
+        >
 
-          <MobileFrame
-            activeTab={activeTab}
-            setActiveTab={setActiveTab}
-            alertCount={
-              unresolvedAlertsCount
-            }
-          >
+          {activeTab === "home" && (
+            <HomeScreen />
+          )}
 
-            {activeTab === "home" && (
-              <HomeScreen />
-            )}
+          {activeTab === "monitoring" && (
+            <MonitoringView
+              patient={patient}
+              metrics={metrics}
+              onUpdateMood={handleUpdateMood}
+            />
+          )}
 
-            {activeTab === "monitoring" && (
-              <MonitoringView
-                patient={patient}
-                metrics={metrics}
-                onUpdateMood={handleUpdateMood}
-              />
-            )}
+          {activeTab === "reminders" && (
+            <RemindersView
+              reminders={reminders}
+              onToggleReminder={
+                handleToggleReminder
+              }
+              onDeleteReminder={
+                handleDeleteReminder
+              }
+              onOpenAddModal={
+                handleOpenAddReminderModal
+              }
+            />
+          )}
 
-            {activeTab === "reminders" && (
-              <RemindersView
-                reminders={reminders}
-                onToggleReminder={
-                  handleToggleReminder
-                }
-                onDeleteReminder={
-                  handleDeleteReminder
-                }
-                onOpenAddModal={
-                  handleOpenAddReminderModal
-                }
-              />
-            )}
+          {activeTab === "alerts" && (
+            <AlertsSafetyView
+              patient={patient}
+              alerts={alerts}
+              onTriggerSos={() =>
+                setIsSosModalOpen(true)
+              }
+              onResolveAlert={
+                handleResolveAlert
+              }
+              onNavigateToLocation={() =>
+                setActiveTab("location")
+              }
+            />
+          )}
 
-            {activeTab === "alerts" && (
-              <AlertsSafetyView
-                patient={patient}
-                alerts={alerts}
-                onTriggerSos={() =>
-                  setIsSosModalOpen(true)
-                }
-                onResolveAlert={
-                  handleResolveAlert
-                }
-                onNavigateToLocation={() =>
-                  setActiveTab("location")
-                }
-              />
-            )}
-
-            {activeTab === "profile" && (
-  <PatientProfileView
-    patient={patient}
-    progress={cognitiveProgress}
-    onUpdateNotes={handleUpdateNotes}
-  />
+          {activeTab === "profile" && (
+<PatientProfileView
+  patient={patient}
+  progress={cognitiveProgress}
+  onUpdateNotes={handleUpdateNotes}
+/>
 )}
 
-            {activeTab === "memory_progress" && (
-              <MemoryProgressView
-                progress={cognitiveProgress}
-                onBack={() =>
-                  setActiveTab("home")
-                }
-              />
-            )}
+          {activeTab === "memory_progress" && (
+            <MemoryProgressView
+              progress={cognitiveProgress}
+              onBack={() =>
+                setActiveTab("home")
+              }
+            />
+          )}
 
-            {activeTab === "location" && (
-              <LocationMonitoringView
-                patient={patient}
-                onBack={() =>
-                  setActiveTab("alerts")
-                }
-              />
-            )}
+          {activeTab === "location" && (
+            <LocationMonitoringView
+              patient={patient}
+              onBack={() =>
+                setActiveTab("alerts")
+              }
+            />
+          )}
 
-          </MobileFrame>
+        </MobileFrame>
 
-        </div>
-
-      ) : (
-
-        <FlutterCodeViewer />
-
-      )}
+      </div>
 
       {/* SOS */}
       <SosModal
