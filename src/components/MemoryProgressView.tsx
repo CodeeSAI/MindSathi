@@ -43,32 +43,32 @@ export const MemoryProgressView: React.FC<MemoryProgressViewProps> = ({
       </div>
 
       {/* 1. Overall Cognitive Index Card */}
-      <div className="rounded-2xl p-5 bg-gradient-to-br from-emerald-800 via-emerald-700 to-teal-700 text-white shadow-lg shadow-emerald-900/15">
+      <div className="ms-glass ms-glass--green ms-glass--featured rounded-2xl p-5 bg-white text-slate-900 shadow-sm border border-l-4 border-emerald-200 border-l-emerald-500">
         <div className="flex items-center justify-between mb-3">
-          <span className="text-xs font-bold uppercase tracking-wider text-emerald-200">
+          <span className="text-xs font-bold uppercase tracking-wider text-emerald-800">
             Weekly Cognitive Index
           </span>
-          <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-white/20 text-xs font-bold text-emerald-100">
+          <div className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-50 text-xs font-bold text-emerald-800">
             <TrendingUp className="w-3.5 h-3.5" />
             <span>+{progress.improvementPercentage}% This Week</span>
           </div>
         </div>
 
-        <div className="flex items-baseline gap-2 mb-2">
+        <div className="flex items-baseline gap-2 mb-3">
           <span className="text-4xl font-black">{progress.overallScore}</span>
-          <span className="text-sm font-semibold text-emerald-200">/ 100</span>
-          <span className="ml-auto text-xs font-bold px-2 py-1 rounded bg-emerald-900/40 text-emerald-300">
+          <span className="text-sm font-semibold text-slate-500">/ 100</span>
+          <span className="ml-auto text-xs font-bold px-2 py-1 rounded-lg bg-emerald-50 text-emerald-800">
             Status: STABLE
           </span>
         </div>
 
-        <p className="text-xs text-emerald-100/90 leading-relaxed bg-black/15 p-2.5 rounded-xl">
+        <p className="text-xs text-slate-700 leading-relaxed bg-slate-50/80 p-3 rounded-xl">
           {progress.statusDescription}
         </p>
       </div>
 
       {/* 2. 7-Day Cognitive Score Chart */}
-      <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-xs">
+      <div className="ms-glass ms-glass--blue rounded-2xl p-4 border border-slate-200 shadow-xs">
         <div className="flex items-center justify-between mb-3">
           <div>
             <h3 className="text-sm font-bold text-slate-900">7-Day Score Trend</h3>
@@ -102,7 +102,7 @@ export const MemoryProgressView: React.FC<MemoryProgressViewProps> = ({
       </div>
 
       {/* 3. Memory Game History */}
-      <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-xs">
+      <div className="ms-glass ms-glass--purple rounded-2xl p-4 border border-slate-200 shadow-xs">
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
             <Award className="w-4 h-4 text-emerald-600" />
@@ -113,11 +113,11 @@ export const MemoryProgressView: React.FC<MemoryProgressViewProps> = ({
           </span>
         </div>
 
-        <div className="space-y-2.5">
+        <div className="space-y-2">
           {progress.gameHistory.map((game) => (
             <div
               key={game.id}
-              className="p-3 rounded-xl border border-slate-200 bg-slate-50/50 hover:bg-white hover:border-emerald-300 transition-all"
+              className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/50 hover:bg-white hover:border-emerald-300 transition-all"
             >
               <div className="flex items-center justify-between mb-1">
                 <h4 className="text-xs font-bold text-slate-900">{game.gameName}</h4>
@@ -125,14 +125,14 @@ export const MemoryProgressView: React.FC<MemoryProgressViewProps> = ({
                   {game.score}/{game.maxScore} pts
                 </span>
               </div>
-              <div className="flex items-center gap-2 text-[11px] text-slate-500 mb-1">
+              <div className="flex items-center gap-2 text-xs text-slate-500 mb-1.5">
                 <span className="px-1.5 py-0.5 rounded bg-sky-50 text-sky-700 font-semibold">
                   {game.cognitiveDomain}
                 </span>
                 <span>• {game.difficulty}</span>
                 <span>• {game.duration}</span>
               </div>
-              <div className="flex items-center gap-1 text-[10px] text-slate-400">
+              <div className="flex items-center gap-1 text-xs text-slate-400">
                 <Clock className="w-3 h-3" />
                 <span>{game.playedTime}</span>
               </div>

@@ -26,7 +26,7 @@ export const MonitoringView: React.FC<MonitoringViewProps> = ({
       </div>
 
       {/* Patient */}
-      <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm">
+      <div className="ms-glass ms-glass--blue bg-white rounded-2xl p-4 border border-slate-200 shadow-sm">
         <div className="flex items-center gap-3">
 
           <div className="w-11 h-11 rounded-xl bg-emerald-50 flex items-center justify-center">
@@ -52,7 +52,7 @@ export const MonitoringView: React.FC<MonitoringViewProps> = ({
       </div>
 
       {/* Clean message */}
-      <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm text-center">
+      <div className="ms-glass ms-glass--purple bg-white rounded-2xl p-5 border border-slate-200 shadow-sm text-center">
 
         <Brain className="w-10 h-10 text-emerald-500 mx-auto mb-3" />
 

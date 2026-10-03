@@ -1,8 +1,15 @@
 import React, { useEffect, useRef, useState } from "react";
-import { addDoc, collection, doc, getDoc, getDocs, serverTimestamp, setDoc } from "firebase/firestore";
+import { addDoc, collection, doc, getDoc, onSnapshot, serverTimestamp, setDoc } from "firebase/firestore";
 import { auth, db } from "../firebase";
 import { signOut } from "firebase/auth";
-import { generateCognitiveAIReport } from "../services/aiCognitiveReport";
+import { SosModal } from "../components/SosModal";
+import {
+  normalizeCognitiveGameResult,
+  syncCanonicalCognitiveAIReport,
+} from "../services/aiCognitiveReport";
+import type { CognitiveAIReport } from "../services/aiCognitiveReport";
+import { ACTIVE_SOS_ALERT_ID, createOrActivateSosAlert } from "../services/safetyAlertService";
+import { getCachedWeather, setCachedWeather } from "../services/apiUsageGuard";
 import { FocusFinder } from "./FocusFinder";
 import { DailyLifeRecall } from "./DailyLifeRecall";
 import { PatternPath } from "./PatternPath";
@@ -40,8 +47,7 @@ type Screen =
 // ─── Shared Components ────────────────────────────────────────────────────────
 function StatusBar() {
   return (
-    <div className="flex items-center justify-between px-6 pt-3 pb-1 text-xs font-semibold text-[#37474F]">
-      <span>9:41</span>
+    <div className="flex items-center justify-end px-6 pt-3 pb-1 text-xs font-semibold text-[#37474F]">
       <div className="flex gap-1 items-center">
         <span>●●●</span>
         <span>WiFi</span>
@@ -53,24 +59,33 @@ function StatusBar() {
 
 function BottomNav({ active, onNav }: { active: string; onNav: (s: Screen) => void }) {
   const items = [
-    { icon: "🏠", label: "Home", screen: "patient-home" as Screen },
-    { icon: "🎮", label: "Games", screen: "games" as Screen },
-    { icon: "🌱", label: "Garden", screen: "memory-garden" as Screen },
-    { icon: "⏰", label: "Reminders", screen: "reminders" as Screen },
-    { icon: "👤", label: "Profile", screen: "patient-profile" as Screen },
+    { icon: "🏠", label: "Home", screen: "patient-home" as Screen, activeColor: "text-[#2F7D32]" },
+    { icon: "🎮", label: "Games", screen: "games" as Screen, activeColor: "text-[#6956B6]" },
+    { icon: "🌱", label: "Garden", screen: "memory-garden" as Screen, activeColor: "text-[#2F7D32]" },
+    { icon: "⏰", label: "Reminders", screen: "reminders" as Screen, activeColor: "text-[#C58A17]" },
+    { icon: "👤", label: "Profile", screen: "patient-profile" as Screen, activeColor: "text-[#3179A8]" },
   ];
   return (
-    <div className="flex bg-white border-t border-[#D9F4F1] pb-5 pt-2 px-2">
-      {items.map(item => (
-        <button
-          key={item.screen}
-          onClick={() => onNav(item.screen)}
-          className={`flex-1 flex flex-col items-center gap-1 py-1 rounded-xl transition-all ${active === item.screen ? "text-[#2E7D73]" : "text-[#90A4AE]"}`}
-        >
-          <span className="text-2xl">{item.icon}</span>
-          <span className={`text-[10px] font-semibold ${active === item.screen ? "text-[#2E7D73]" : "text-[#90A4AE]"}`}>{item.label}</span>
-        </button>
-      ))}
+    <div className="ms-bottom-nav flex pb-5 pt-2 px-2 z-30">
+      {items.map(item => {
+        const isActive = active === item.screen;
+        return (
+          <button
+            key={item.screen}
+            type="button"
+            onClick={() => onNav(item.screen)}
+            aria-label={item.label}
+            className={`min-h-12 flex-1 flex flex-col items-center justify-center gap-1 py-1 rounded-2xl transition-all cursor-pointer ${
+              isActive ? `${item.activeColor} ms-nav-active-pill font-bold` : "text-[#4F5A50] hover:text-[#182019]"
+            }`}
+          >
+            <span className="text-2xl leading-none">{item.icon}</span>
+            <span className={`text-[12px] leading-tight ${isActive ? "font-bold text-[#182019]" : "font-medium"}`}>
+              {item.label}
+            </span>
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -121,20 +136,20 @@ function GamesLibrary({ onNav }: { onNav: (s: Screen) => void }) {
   ];
 
   return (
-    <div className="h-full flex flex-col bg-[#F8FAFB] overflow-y-auto">
+    <div className="h-full flex flex-col bg-[#FFFDF1] overflow-y-auto">
       
       {/* Header */}
-      <div className="px-5 pt-5 pb-6 bg-gradient-to-br from-[#2E7D73] to-[#1A5C54] rounded-b-[32px] shadow-md">
+      <div className="ms-patient-header px-5 pt-4 pb-6 rounded-b-[32px] shadow-md">
         <div className="flex items-center gap-3">
           <button
             onClick={() => onNav("patient-home")}
-            className="w-10 h-10 rounded-full bg-white/20 text-white flex items-center justify-center text-xl"
+            className="w-10 h-10 rounded-full bg-white/20 hover:bg-white/30 text-white flex items-center justify-center text-xl transition active:scale-95 cursor-pointer"
           >
             ←
           </button>
 
           <div>
-            <p className="text-[#A8DADB] text-sm font-medium">
+            <p className="text-[#EAF5E8] text-sm font-medium">
               Cognitive Training
             </p>
 
@@ -144,38 +159,38 @@ function GamesLibrary({ onNav }: { onNav: (s: Screen) => void }) {
           </div>
         </div>
 
-        <p className="text-[#D9F4F1] text-sm mt-4">
+        <p className="text-[#EAF5E8]/90 text-sm mt-3">
           Choose an activity to exercise your memory, focus and thinking.
         </p>
       </div>
 
       {/* Games */}
-      <div className="p-5 space-y-4 pb-8">
+      <div className="p-5 space-y-3 pb-8">
         {games.map((game) => (
           <button
             key={game.id}
             onClick={() => onNav(game.id)}
-            className="w-full text-left bg-white rounded-3xl p-4 shadow-sm border border-gray-100 hover:shadow-md transition"
+            className="ms-glass ms-game-card ms-glass--purple w-full text-left bg-white rounded-3xl p-4 shadow-sm border border-gray-100"
           >
             <div className="flex items-center gap-4">
               
               <div
-                className={`w-16 h-16 rounded-2xl bg-gradient-to-br ${game.color} flex items-center justify-center text-3xl shadow-sm`}
+                className={`w-14 h-14 rounded-2xl bg-gradient-to-br ${game.color} flex items-center justify-center text-3xl shadow-sm flex-shrink-0`}
               >
                 {game.icon}
               </div>
 
-              <div className="flex-1">
-                <h2 className="text-lg font-bold text-gray-800">
+              <div className="flex-1 min-w-0">
+                <h2 className="text-base font-bold text-gray-800">
                   {game.title}
                 </h2>
 
-                <p className="text-sm text-gray-500 mt-1">
+                <p className="text-sm text-gray-500 mt-1 leading-snug">
                   {game.description}
                 </p>
               </div>
 
-              <div className="text-gray-400 text-xl">
+              <div className="text-gray-400 text-lg flex-shrink-0">
                 →
               </div>
             </div>
@@ -188,10 +203,86 @@ function GamesLibrary({ onNav }: { onNav: (s: Screen) => void }) {
 
 function BackButton({ onBack, light = false }: { onBack: () => void; light?: boolean }) {
   return (
-    <button onClick={onBack} className={`w-10 h-10 rounded-full flex items-center justify-center ${light ? "bg-white/20" : "bg-white shadow-sm"}`}>
-      <span className={light ? "text-white text-xl" : "text-[#37474F] text-xl"}>←</span>
+    <button
+      type="button"
+      onClick={onBack}
+      aria-label="Back"
+      className={`min-w-[44px] min-h-[44px] w-11 h-11 rounded-full flex items-center justify-center cursor-pointer active:scale-95 transition-transform ${
+        light ? "bg-white/20 hover:bg-white/30 text-white" : "bg-white hover:bg-gray-50 text-[#182019] shadow-sm border border-gray-100"
+      }`}
+    >
+      <span className="text-xl leading-none">←</span>
     </button>
   );
+}
+
+function getLocalDateKey(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function getMondayWeekId(date: Date): string {
+  const monday = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7));
+  return getLocalDateKey(monday);
+}
+
+function calculateWeeklyDashboardStats(gameDocs: any[], now: Date) {
+  const periodId = getMondayWeekId(now);
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const todayKey = getLocalDateKey(today);
+  const completedDates = new Set<string>();
+  const todayGames = new Set<string>();
+  let totalStars = 0;
+
+  gameDocs.forEach((gameDoc) => {
+    const data = gameDoc.data();
+    const completedAt =
+      data.completedAt?.toDate?.() ||
+      (data.completedAt instanceof Date
+        ? data.completedAt
+        : typeof data.timestamp === "number"
+        ? new Date(data.timestamp)
+        : null);
+
+    if (!(completedAt instanceof Date) || Number.isNaN(completedAt.getTime())) {
+      return;
+    }
+
+    if (getMondayWeekId(completedAt) !== periodId) return;
+
+    totalStars += Number(data.starsEarned || data.stars || 0);
+    const completedDateKey = getLocalDateKey(completedAt);
+    completedDates.add(completedDateKey);
+
+    if (completedDateKey === todayKey) {
+      todayGames.add(String(data.gameName || data.gameType || "Cognitive Game"));
+    }
+  });
+
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
+  const startDate = completedDates.has(todayKey)
+    ? today
+    : completedDates.has(getLocalDateKey(yesterday))
+    ? yesterday
+    : null;
+
+  let streak = 0;
+  if (startDate) {
+    const checkDate = new Date(startDate);
+    while (completedDates.has(getLocalDateKey(checkDate))) {
+      streak++;
+      checkDate.setDate(checkDate.getDate() - 1);
+    }
+  }
+
+  return {
+    periodId,
+    stars: totalStars,
+    streak,
+    badges: Math.min(todayGames.size + (streak >= 3 ? 1 : 0), 6),
+    todayGames,
+  };
 }
 
 // ─── Patient Home ─────────────────────────────────────────
@@ -209,9 +300,11 @@ function PatientHome({ onNav }: { onNav: (s: Screen) => void }) {
   const [stars, setStars] = useState(0);
   const [streak, setStreak] = useState(0);
   const [badges, setBadges] = useState(0);
+  const [isSosModalOpen, setIsSosModalOpen] = useState(false);
+  const [sosAlertStatus, setSosAlertStatus] = useState<"active" | "resolved" | null>(null);
   const [todayCompletedGames, setTodayCompletedGames] =
     useState<Set<string>>(new Set());
-    const [aiReport, setAiReport] = useState<any>(null);
+    const [aiReport, setAiReport] = useState<CognitiveAIReport | null>(null);
 
   const [upcomingReminder, setUpcomingReminder] = useState<{
     title: string;
@@ -231,163 +324,92 @@ function PatientHome({ onNav }: { onNav: (s: Screen) => void }) {
     getDailyGameDifficulty("pattern-path");
 
   useEffect(() => {
+    const patient = auth.currentUser;
+    if (!patient) return;
+
+    return onSnapshot(
+      doc(db, "patients", patient.uid, "safetyAlerts", ACTIVE_SOS_ALERT_ID),
+      (snapshot) => {
+        const status = snapshot.data()?.status;
+        setSosAlertStatus(status === "active" || status === "resolved" ? status : null);
+      },
+      (error) => console.error("Patient SOS listener failed:", error)
+    );
+  }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+    let unsubscribeReport: (() => void) | undefined;
+    let unsubscribeGameResults: (() => void) | undefined;
+    let mondayResetTimeout: number | undefined;
+    let latestGameDocs: any[] = [];
+
     const loadDashboardData = async () => {
       const user = auth.currentUser;
 
       if (!user) return;
 
-      try {
-        const snapshot = await getDocs(
-          collection(
-            db,
-            "patients",
-            user.uid,
-            "gameResults"
-          )
-            );
+      const periodStorageKey = `patient-dashboard-weekly-period:${user.uid}`;
+      const refreshWeeklyStats = (gameDocs: any[]) => {
+        const stats = calculateWeeklyDashboardStats(gameDocs, new Date());
 
-    const gameHistory = snapshot.docs.map((gameDoc) => {
-      const data = gameDoc.data();
-
-      let score = Number(data.normalizedScore ?? data.score ?? 0);
-
-      if (data.normalizedScore === undefined && data.maxScore) {
-        score =
-          (score / Number(data.maxScore)) * 100;
-      }
-
-      return {
-        id: gameDoc.id,
-        gameName: String(
-          data.gameName ||
-          data.gameType ||
-          "Cognitive Game"
-        ),
-        score: Math.max(
-          0,
-          Math.min(100, Math.round(score))
-        ),
-        maxScore: 100,
-        cognitiveDomain:
-          data.cognitiveDomain || "Cognitive",
-        playedTime:
-          data.completedAt?.toDate?.()
-            ? data.completedAt.toDate().toLocaleString()
-            : "Recently",
-      };
-    });
-
-    if (gameHistory.length > 0) {
-      generateCognitiveAIReport(gameHistory)
-        .then((report) => {
-          setAiReport(report);
-          console.log(
-            "PATIENT GEMINI AI COGNITIVE REPORT:",
-            report
-          );
-        })
-        .catch((error) => {
-          console.error(
-            "Patient AI report failed:",
-            error
-          );
-        });
-    }
-
-    let totalStars = 0;
-
-        const completedDates = new Set<string>();
-        const todayGames = new Set<string>();
-
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-
-        const todayKey =
-          today.toLocaleDateString("en-CA");
-
-        snapshot.docs.forEach((gameDoc) => {
-          const data = gameDoc.data();
-
-          totalStars += Number(
-            data.starsEarned ||
-              data.stars ||
-              0
-          );
-
-          const completedAt =
-            data.completedAt?.toDate?.()
-              ? data.completedAt.toDate()
-              : new Date();
-
-          const gameDate = new Date(completedAt);
-          gameDate.setHours(0, 0, 0, 0);
-
-          const dateKey =
-            gameDate.toLocaleDateString("en-CA");
-
-          completedDates.add(dateKey);
-
-          if (dateKey === todayKey) {
-            const gameName = String(
-              data.gameName ||
-                data.gameType ||
-                "Cognitive Game"
-            );
-
-            todayGames.add(gameName);
+        try {
+          const storedPeriod = window.localStorage.getItem(periodStorageKey);
+          if (storedPeriod !== stats.periodId) {
+            setStars(0);
+            setStreak(0);
+            setBadges(0);
+            window.localStorage.setItem(periodStorageKey, stats.periodId);
           }
-        });
-
-        setStars(totalStars);
-        setTodayCompletedGames(todayGames);
-
-        // ─── Streak ─────────────────────────────
-
-        const yesterday = new Date(today);
-        yesterday.setDate(
-          yesterday.getDate() - 1
-        );
-
-        const yesterdayKey =
-          yesterday.toLocaleDateString("en-CA");
-
-        const startDate = completedDates.has(todayKey)
-          ? today
-          : completedDates.has(yesterdayKey)
-          ? yesterday
-          : null;
-
-        let currentStreak = 0;
-
-        if (startDate) {
-          const checkDate = new Date(startDate);
-
-          while (true) {
-            const dateKey =
-              checkDate.toLocaleDateString("en-CA");
-
-            if (!completedDates.has(dateKey)) {
-              break;
-            }
-
-            currentStreak++;
-
-            checkDate.setDate(
-              checkDate.getDate() - 1
-            );
-          }
+        } catch {
+          // Firestore results still allow the weekly stats to be recalculated.
         }
 
-        setStreak(currentStreak);
+        setStars(stats.stars);
+        setStreak(stats.streak);
+        setBadges(stats.badges);
+        setTodayCompletedGames(stats.todayGames);
+      };
 
-        // ─── Badges ─────────────────────────────
+      const scheduleMondayReset = () => {
+        const now = new Date();
+        const daysUntilMonday = (8 - now.getDay()) % 7 || 7;
+        const nextMonday = new Date(
+          now.getFullYear(),
+          now.getMonth(),
+          now.getDate() + daysUntilMonday
+        );
+        nextMonday.setHours(0, 0, 0, 0);
 
-        setBadges(
-          Math.min(
-            todayGames.size +
-              (currentStreak >= 3 ? 1 : 0),
-            6
-          )
+        mondayResetTimeout = window.setTimeout(() => {
+          if (!isMounted) return;
+          refreshWeeklyStats(latestGameDocs);
+          scheduleMondayReset();
+        }, nextMonday.getTime() - now.getTime());
+      };
+
+      refreshWeeklyStats([]);
+      scheduleMondayReset();
+
+      try {
+        unsubscribeReport = onSnapshot(
+          doc(db, "users", user.uid),
+          (userSnapshot) => {
+            if (isMounted) {
+              setAiReport(userSnapshot.data()?.cognitiveReport ?? null);
+            }
+          },
+          (error) => console.error("Patient cognitive report listener failed:", error)
+        );
+
+        unsubscribeGameResults = onSnapshot(
+          collection(db, "patients", user.uid, "gameResults"),
+          (gameSnapshot) => {
+            if (!isMounted) return;
+            latestGameDocs = gameSnapshot.docs;
+            refreshWeeklyStats(latestGameDocs);
+          },
+          (error) => console.error("Patient game results listener failed:", error)
         );
 
         // ─── Reminder ──────────────────────────
@@ -458,6 +480,15 @@ function PatientHome({ onNav }: { onNav: (s: Screen) => void }) {
     };
 
     loadDashboardData();
+
+    return () => {
+      isMounted = false;
+      unsubscribeReport?.();
+      unsubscribeGameResults?.();
+      if (mondayResetTimeout !== undefined) {
+        window.clearTimeout(mondayResetTimeout);
+      }
+    };
   }, []);
 
   // ─── Four Cognitive Activities ───────────────
@@ -470,8 +501,8 @@ function PatientHome({ onNav }: { onNav: (s: Screen) => void }) {
       desc: "Card matching & visual pairs",
       icon: "🃏",
       level: memoryLevel,
-      bg: "bg-purple-50",
-      border: "border-purple-200/80",
+      bg: "bg-violet-50/80",
+      border: "border-violet-200/70",
       isCompleted:
         todayCompletedGames.has(
           "Memory Match"
@@ -484,8 +515,8 @@ function PatientHome({ onNav }: { onNav: (s: Screen) => void }) {
       desc: "Spot target symbols quickly",
       icon: "🎯",
       level: focusLevel,
-      bg: "bg-teal-50",
-      border: "border-teal-200/80",
+      bg: "bg-sky-50/80",
+      border: "border-sky-200/70",
       isCompleted:
         todayCompletedGames.has(
           "Focus Finder"
@@ -498,8 +529,8 @@ function PatientHome({ onNav }: { onNav: (s: Screen) => void }) {
       desc: "Order everyday routine steps",
       icon: "🗓️",
       level: recallLevel,
-      bg: "bg-amber-50",
-      border: "border-amber-200/80",
+      bg: "bg-amber-50/80",
+      border: "border-amber-200/70",
       isCompleted:
         todayCompletedGames.has(
           "Daily Life Recall"
@@ -512,8 +543,8 @@ function PatientHome({ onNav }: { onNav: (s: Screen) => void }) {
       desc: "Visual sequence reasoning",
       icon: "🧩",
       level: patternLevel,
-      bg: "bg-sky-50",
-      border: "border-sky-200/80",
+      bg: "bg-rose-50/80",
+      border: "border-rose-200/70",
       isCompleted:
         todayCompletedGames.has(
           "Pattern Path"
@@ -535,17 +566,17 @@ function PatientHome({ onNav }: { onNav: (s: Screen) => void }) {
     ) || fourGames[0];
 
   return (
-    <div className="h-full flex flex-col bg-[#F8FAFB] overflow-y-auto">
+    <div className="h-full flex flex-col bg-[#FFFDF1] overflow-y-auto">
       <StatusBar />
 
       {/* ─── Header ─────────────────────────────── */}
 
-      <div className="px-5 pt-2 pb-4 bg-gradient-to-br from-[#2E7D73] to-[#1A5C54] rounded-b-[32px] shadow-md">
+      <div className="ms-patient-header px-5 pt-3 pb-5 rounded-b-[32px] shadow-md">
 
         <div className="flex items-center justify-between mb-3">
 
           <div>
-            <p className="text-[#A8DADB] text-sm font-medium">
+            <p className="text-[#EAF5E8] text-sm font-medium">
               {greeting},
             </p>
 
@@ -553,7 +584,7 @@ function PatientHome({ onNav }: { onNav: (s: Screen) => void }) {
               Ravi! 👋
             </h1>
 
-            <p className="text-[#D9F4F1] text-sm mt-0.5">
+            <p className="text-[#EAF5E8]/90 text-sm mt-0.5">
               Ready for today's cognitive journey?
             </p>
           </div>
@@ -562,7 +593,8 @@ function PatientHome({ onNav }: { onNav: (s: Screen) => void }) {
             onClick={() =>
               onNav("patient-profile")
             }
-            className="w-14 h-14 rounded-full bg-[#D9F4F1] flex items-center justify-center shadow"
+            className="w-14 h-14 rounded-full bg-white/20 hover:bg-white/30 backdrop-blur-md border border-white/40 flex items-center justify-center shadow-sm transition active:scale-95 cursor-pointer"
+            aria-label="View Patient Profile"
           >
             <span className="text-3xl">
               👴
@@ -573,51 +605,51 @@ function PatientHome({ onNav }: { onNav: (s: Screen) => void }) {
 
         {/* Stats */}
 
-        <div className="flex gap-3 mt-2">
+        <div className="flex gap-2.5 mt-2">
 
-          <div className="flex-1 bg-white/15 rounded-2xl px-4 py-3 flex items-center gap-2">
-            <span className="text-2xl">
+          <div className="ms-stat-panel ms-stat-panel--stars flex-1 rounded-2xl px-3 py-2.5 flex items-center gap-2">
+            <span className="ms-stat-icon ms-stat-icon--stars text-xl">
               ⭐
             </span>
 
-            <div>
-              <p className="text-white font-bold text-lg leading-none">
+            <div className="min-w-0">
+              <p className="text-[#182019] font-black text-lg leading-tight">
                 {stars}
               </p>
 
-              <p className="text-[#D9F4F1] text-xs">
+              <p className="text-[#4F5A50] text-xs font-semibold">
                 Stars
               </p>
             </div>
           </div>
 
-          <div className="flex-1 bg-white/15 rounded-2xl px-4 py-3 flex items-center gap-2">
-            <span className="text-2xl">
+          <div className="ms-stat-panel ms-stat-panel--streak flex-1 rounded-2xl px-3 py-2.5 flex items-center gap-2">
+            <span className="ms-stat-icon ms-stat-icon--streak text-xl">
               🔥
             </span>
 
-            <div>
-              <p className="text-white font-bold text-lg leading-none">
-                {streak} days
+            <div className="min-w-0">
+              <p className="text-[#182019] font-black text-lg leading-tight">
+                {streak} d
               </p>
 
-              <p className="text-[#D9F4F1] text-xs">
+              <p className="text-[#4F5A50] text-xs font-semibold">
                 Streak
               </p>
             </div>
           </div>
 
-          <div className="flex-1 bg-white/15 rounded-2xl px-4 py-3 flex items-center gap-2">
-            <span className="text-2xl">
+          <div className="ms-stat-panel ms-stat-panel--badges flex-1 rounded-2xl px-3 py-2.5 flex items-center gap-2">
+            <span className="ms-stat-icon ms-stat-icon--badges text-xl">
               🏅
             </span>
 
-            <div>
-              <p className="text-white font-bold text-lg leading-none">
+            <div className="min-w-0">
+              <p className="text-[#182019] font-black text-lg leading-tight">
                 {badges}
               </p>
 
-              <p className="text-[#D9F4F1] text-xs">
+              <p className="text-[#4F5A50] text-xs font-semibold">
                 Badges
               </p>
             </div>
@@ -628,29 +660,35 @@ function PatientHome({ onNav }: { onNav: (s: Screen) => void }) {
 
       {/* ─── Main Content ──────────────────────── */}
 
-      <div className="px-5 pt-4 pb-5 flex flex-col gap-4">
+      <div className="ms-patient-content px-5 pt-4 pb-5 flex flex-col gap-4">
 
         {/* Today's Cognitive Journey */}
 
-        <div className="w-full bg-gradient-to-br from-[#7E57C2] to-[#9575CD] rounded-3xl p-5 shadow-md">
+        <div
+          className="ms-glass ms-card-lift w-full rounded-3xl p-5 shadow-sm border border-white/80"
+          style={{
+            backgroundImage:
+              "radial-gradient(ellipse at 92% 12%, rgba(244, 124, 108, 0.08), transparent 45%), radial-gradient(ellipse at 8% 88%, rgba(155, 138, 251, 0.08), transparent 45%), linear-gradient(145deg, rgba(255, 255, 255, 0.90), rgba(255, 253, 241, 0.78))",
+          }}
+        >
 
           <div className="flex items-start justify-between">
 
             <div>
-              <p className="text-white/80 text-sm font-semibold">
+              <p className="text-[#2F7D32] text-xs font-bold uppercase tracking-wider">
                 ✨ Today's Journey
               </p>
 
-              <h2 className="text-2xl font-extrabold text-white mt-1">
+              <h2 className="text-2xl font-extrabold text-[#182019] mt-1">
                 Today's Cognitive Journey
               </h2>
 
-              <p className="text-white/80 text-sm mt-1">
+              <p className="text-[#4F5A50] text-sm mt-0.5">
                 4 personalized activities
               </p>
             </div>
 
-            <div className="w-16 h-16 rounded-2xl bg-white/20 flex items-center justify-center text-4xl">
+            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-rose-100 via-pink-100 to-purple-100 border border-rose-200/60 shadow-xs flex items-center justify-center text-4xl flex-shrink-0">
               🧠
             </div>
 
@@ -660,20 +698,20 @@ function PatientHome({ onNav }: { onNav: (s: Screen) => void }) {
 
           <div className="mt-5">
 
-            <div className="flex justify-between text-white text-sm mb-2">
+            <div className="flex justify-between text-[#4F5A50] text-sm mb-2 font-medium">
               <span>
                 {completedCount} of 4 completed
               </span>
 
-              <span>
+              <span className="font-bold text-[#182019]">
                 {Math.round(progress)}%
               </span>
             </div>
 
-            <div className="h-2.5 bg-white/25 rounded-full overflow-hidden">
+            <div className="h-2.5 bg-slate-200/70 rounded-full overflow-hidden">
 
               <div
-                className="h-full bg-white rounded-full transition-all duration-500"
+                className="h-full bg-gradient-to-r from-emerald-500 to-[#2F7D32] rounded-full transition-all duration-500"
                 style={{
                   width: `${progress}%`,
                 }}
@@ -688,33 +726,47 @@ function PatientHome({ onNav }: { onNav: (s: Screen) => void }) {
           <div className="grid grid-cols-4 gap-2 mt-5">
 
             {fourGames.map(
-              (game, index) => (
-                <button
-                  key={game.id}
-                  onClick={() =>
-                    onNav(game.id)
-                  }
-                  className="flex flex-col items-center"
-                >
+              (game) => {
+                const isNext = game.id === nextGame.id;
+                const iconColorStyle =
+                  game.id === "memory-match"
+                    ? "bg-[#FFE3DC] text-[#A84E31] border-[#F47C6C]/40"
+                    : game.id === "focus-finder"
+                    ? "bg-[#E6F2FF] text-[#3179A8] border-[#6EA8D9]/40"
+                    : game.id === "daily-life-recall"
+                    ? "bg-[#FFF0C7] text-[#94650D] border-[#F4B942]/40"
+                    : "bg-[#EEE9FF] text-[#6956B6] border-[#9B8AFB]/40";
 
-                  <div
-                    className={`w-12 h-12 rounded-full flex items-center justify-center text-xl ${
-                      game.isCompleted
-                        ? "bg-white text-[#7E57C2]"
-                        : "bg-white/20 text-white"
-                    }`}
+                return (
+                  <button
+                    key={game.id}
+                    onClick={() =>
+                      onNav(game.id)
+                    }
+                    className="flex flex-col items-center gap-1.5 flex-1 p-1 rounded-2xl hover:bg-white/40 transition active:scale-95 cursor-pointer"
                   >
-                    {game.isCompleted
-                      ? "✓"
-                      : game.icon}
-                  </div>
 
-                  <span className="text-[10px] text-white text-center mt-2 leading-tight">
-                    {index + 1}
-                  </span>
+                    <div
+                      className={`w-12 h-12 rounded-full flex items-center justify-center text-xl border transition-all ${
+                        game.isCompleted
+                          ? "bg-[#2F7D32] text-white border-[#2F7D32] shadow-sm"
+                          : isNext
+                          ? `${iconColorStyle} ring-2 ring-[#2F7D32] ring-offset-2 shadow-sm`
+                          : `${iconColorStyle} opacity-90`
+                      }`}
+                    >
+                      {game.isCompleted
+                        ? "✓"
+                        : game.icon}
+                    </div>
 
-                </button>
-              )
+                    <span className="text-xs text-[#182019] text-center leading-tight font-semibold px-0.5">
+                      {game.title.split(" ")[0]}
+                    </span>
+
+                  </button>
+                );
+              }
             )}
 
           </div>
@@ -726,16 +778,17 @@ function PatientHome({ onNav }: { onNav: (s: Screen) => void }) {
               onClick={() =>
                 onNav(nextGame.id)
               }
-              className="w-full mt-5 bg-white text-[#6657A5] rounded-2xl py-3.5 font-bold shadow"
+              className="ms-btn-journey w-full min-h-12 mt-5 rounded-2xl py-3.5 px-6 font-bold text-base flex items-center justify-center gap-2 cursor-pointer"
             >
-              Continue Journey →
+              <span>Continue Journey</span>
+              <span className="text-lg">→</span>
             </button>
           )}
 
           {completedCount === 4 && (
-            <div className="mt-5 bg-white/15 rounded-2xl p-4 text-center text-white">
-              🎉
-              <p className="font-bold mt-1">
+            <div className="ms-glass ms-glass--green mt-5 rounded-2xl p-4 text-center text-[#182019] border border-emerald-200">
+              <span className="text-2xl">🎉</span>
+              <p className="font-bold mt-1 text-[#2F7D32]">
                 Amazing work today!
               </p>
             </div>
@@ -750,68 +803,115 @@ function PatientHome({ onNav }: { onNav: (s: Screen) => void }) {
             onClick={() =>
               onNav("reminders")
             }
-            className="w-full bg-[#FFF3CD] border border-[#FFD76A] rounded-3xl p-5 text-left flex items-center gap-4"
+            className="ms-glass ms-glass--amber ms-card-lift w-full border border-amber-200/80 rounded-3xl p-5 text-left flex items-center gap-4 cursor-pointer"
           >
 
-            <div className="w-14 h-14 rounded-2xl bg-[#F59E0B] flex items-center justify-center text-3xl">
+            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-3xl shadow-sm flex-shrink-0 text-white">
               💊
             </div>
 
-            <div className="flex-1">
+            <div className="flex-1 min-w-0">
 
-              <p className="text-[#8A4B08] text-sm font-semibold">
+              <p className="text-[#8A4B08] text-xs font-bold uppercase tracking-wider">
                 Upcoming reminder
               </p>
 
-              <h3 className="text-[#7A3E00] text-lg font-bold">
+              <h3 className="text-[#182019] text-lg font-bold truncate mt-0.5">
                 {upcomingReminder.title}
               </h3>
 
-              <p className="text-[#9A5A14] text-sm">
+              <p className="text-[#4F5A50] text-sm mt-0.5">
                 Today • {upcomingReminder.time}
               </p>
 
             </div>
 
-            <span className="text-[#B7791F] text-xl">
+            <span className="text-amber-600 font-bold text-xl flex-shrink-0">
               →
             </span>
 
           </button>
         )}
-{/* AI Cognitive Report */}
-{aiReport && (
-  <div
-        className="bg-gradient-to-br from-teal-800 to-emerald-700 rounded-3xl p-5 text-white shadow-md cursor-pointer mb-5"
-  >
-    <div className="flex items-center justify-between">
-      <div>
-        <p className="text-xs uppercase tracking-wide font-semibold text-emerald-100">
-          Cognitive AI Report
-        </p>
 
-        <div className="flex items-baseline gap-2 mt-1">
-          <span className="text-3xl font-black">
-            {aiReport.overallScore}/100
-          </span>
+        {/* AI Cognitive Report */}
+        {aiReport && (
+          <div
+            onClick={() => onNav("games")}
+            className="ms-glass ms-glass--purple ms-card-lift border border-purple-200/70 rounded-3xl p-5 text-[#182019] shadow-sm cursor-pointer"
+          >
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs uppercase tracking-wide font-bold text-violet-800">
+                  Cognitive AI Report
+                </p>
 
-          <span className="text-xs bg-white/20 px-2 py-1 rounded-full">
-            AI analyzed
-          </span>
-        </div>
-      </div>
+                <div className="flex items-baseline gap-2 mt-1">
+                  <span className="ms-score-enter text-3xl font-black text-[#2F7D32]">
+                    {aiReport.overallScore}/100
+                  </span>
 
-      <div className="w-12 h-12 rounded-2xl bg-white/15 flex items-center justify-center">
-        <Brain className="w-7 h-7" />
-      </div>
-    </div>
+                  <span className="text-xs bg-violet-100/80 text-violet-800 px-2.5 py-1 rounded-full font-bold">
+                    {aiReport.totalSessions ?? aiReport.sourceGameCount ?? "—"} sessions
+                  </span>
+                </div>
+              </div>
 
-    <p className="text-sm text-emerald-50 mt-3 leading-relaxed">
-      {aiReport.summary}
-    </p>
+              <div className="w-12 h-12 rounded-2xl bg-violet-100 border border-violet-200/60 flex items-center justify-center text-violet-700 shadow-xs flex-shrink-0">
+                <Brain className="w-7 h-7 text-violet-700" />
+              </div>
+            </div>
 
-    </div>
-)}
+            <p className="text-sm text-[#4F5A50] mt-3 leading-relaxed">
+              {aiReport.summary}
+            </p>
+
+            <div
+              className="mt-3 h-2 overflow-hidden rounded-full bg-slate-200/70"
+              role="progressbar"
+              aria-label="Overall cognitive game performance"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={aiReport.overallScore}
+            >
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-[#2F7D32] transition-all duration-500"
+                style={{ width: `${Math.max(0, Math.min(100, aiReport.overallScore))}%` }}
+              />
+            </div>
+
+            {aiReport.strengths?.length > 0 && (
+              <p className="text-xs text-[#4F5A50] mt-2.5">
+                <span className="font-bold text-[#182019]">Strengths: </span>
+                {aiReport.strengths.slice(0, 2).map((item: any) => typeof item === "string" ? item : item.observation).filter(Boolean).join(" ")}
+              </p>
+            )}
+            {aiReport.areasToImprove?.length > 0 && (
+              <p className="text-xs text-[#4F5A50] mt-1.5">
+                <span className="font-bold text-[#182019]">Try next: </span>
+                {aiReport.areasToImprove.slice(0, 2).map((item: any) => item.observation).join(" ")}
+              </p>
+            )}
+            {aiReport.personalizedRecommendations?.length > 0 && (
+              <p className="text-xs text-[#4F5A50] mt-1.5">
+                {aiReport.personalizedRecommendations[0]}
+              </p>
+            )}
+            {aiReport.trendExplanation && (
+              <p className="text-xs text-[#4F5A50] mt-1.5">{aiReport.trendExplanation}</p>
+            )}
+            {aiReport.domainInsights?.slice(0, 2).map((insight) => (
+              <p key={insight.domain} className="text-xs text-[#4F5A50] mt-1">
+                <span className="font-semibold text-[#182019]">{insight.domain}:</span> {insight.observation}
+              </p>
+            ))}
+            <p className="text-xs text-[#2F7D32] font-bold mt-3">{aiReport.encouragement}</p>
+          </div>
+        )}
+        {!aiReport && (
+          <p className="text-sm text-[#667066] italic">
+            Your personalized report will be available after more activity.
+          </p>
+        )}
 
         {/* Cognitive Activities */}
 
@@ -820,11 +920,11 @@ function PatientHome({ onNav }: { onNav: (s: Screen) => void }) {
           <div className="flex items-center justify-between mb-3">
 
             <div>
-              <h2 className="text-xl font-extrabold text-[#37474F]">
+              <h2 className="text-xl font-extrabold text-[#182019]">
                 Cognitive Activities
               </h2>
 
-              <p className="text-sm text-[#78909C]">
+              <p className="text-sm text-[#4F5A50]">
                 AI-personalized for Ravi
               </p>
             </div>
@@ -833,7 +933,7 @@ function PatientHome({ onNav }: { onNav: (s: Screen) => void }) {
               onClick={() =>
                 onNav("games")
               }
-              className="text-[#2E7D73] font-semibold text-sm"
+              className="text-[#2F7D32] hover:text-[#245F2B] font-bold text-sm cursor-pointer"
             >
               See all →
             </button>
@@ -849,49 +949,49 @@ function PatientHome({ onNav }: { onNav: (s: Screen) => void }) {
                   onClick={() =>
                     onNav(game.id)
                   }
-                  className={`${game.bg} ${game.border} border rounded-3xl p-4 text-left shadow-sm`}
+                  className={`ms-game-card ms-glass ms-glass--${game.id === "memory-match" ? "purple" : game.id === "focus-finder" ? "blue" : game.id === "daily-life-recall" ? "peach" : "amber"} ${game.bg} ${game.border} border rounded-3xl p-4 text-left shadow-sm cursor-pointer`}
                 >
 
                   <div className="flex items-start justify-between">
 
-                    <div className="w-12 h-12 rounded-2xl bg-white flex items-center justify-center text-2xl shadow-sm">
+                    <div className="w-12 h-12 rounded-2xl bg-white flex items-center justify-center text-2xl shadow-sm border border-slate-100">
                       {game.icon}
                     </div>
 
                     {game.isCompleted && (
-                      <span className="w-7 h-7 rounded-full bg-[#43A047] text-white flex items-center justify-center text-sm font-bold">
+                      <span className="w-7 h-7 rounded-full bg-[#2F7D32] text-white flex items-center justify-center text-sm font-bold shadow-xs">
                         ✓
                       </span>
                     )}
 
                   </div>
 
-                  <h3 className="font-bold text-[#37474F] mt-3 leading-tight">
+                  <h3 className="font-bold text-[#182019] mt-3 leading-tight">
                     {game.title}
                   </h3>
 
-                  <p className="text-[#607D8B] text-xs mt-1">
+                  <p className="text-[#4F5A50] text-xs mt-1 font-medium">
                     {game.domain}
                   </p>
 
-                  <p className="text-[#78909C] text-xs mt-2">
+                  <p className="text-[#667066] text-xs mt-2 leading-relaxed">
                     {game.desc}
                   </p>
 
                   <div className="flex items-center justify-between mt-3">
 
-                    <span className="px-2 py-1 rounded-full bg-white text-[#6657A5] text-[11px] font-bold">
+                    <span className="px-2.5 py-1 rounded-full bg-white text-[#182019] text-xs font-bold border border-slate-200/60 shadow-2xs">
                       Level {game.level}
                     </span>
 
-                    <span className="text-[#78909C]">
+                    <span className="text-[#4F5A50] font-bold">
                       →
                     </span>
 
                   </div>
 
                   {game.isCompleted && (
-                    <p className="text-[#43A047] text-[10px] font-bold mt-2">
+                    <p className="text-[#2F7D32] text-xs font-bold mt-2">
                       Completed today
                     </p>
                   )}
@@ -910,28 +1010,28 @@ function PatientHome({ onNav }: { onNav: (s: Screen) => void }) {
           onClick={() =>
             onNav("memory-garden")
           }
-          className="w-full bg-[#EAF5EE] rounded-3xl p-5 text-left"
+          className="ms-glass ms-glass--green ms-card-lift w-full border border-emerald-200/80 rounded-3xl p-5 text-left cursor-pointer"
         >
 
           <div className="flex items-center gap-4">
 
-            <div className="w-14 h-14 rounded-2xl bg-white flex items-center justify-center text-3xl">
+            <div className="w-14 h-14 rounded-2xl bg-emerald-100/90 border border-emerald-200/60 flex items-center justify-center text-3xl shadow-xs flex-shrink-0">
               🌱
             </div>
 
-            <div className="flex-1">
+            <div className="flex-1 min-w-0">
 
-              <h2 className="text-lg font-extrabold text-[#315B45]">
+              <h2 className="text-lg font-extrabold text-[#182019]">
                 Memory Garden
               </h2>
 
-              <p className="text-sm text-[#5D7868] mt-1">
+              <p className="text-sm text-[#4F5A50] mt-0.5">
                 Water your garden and watch your memories grow.
               </p>
 
             </div>
 
-            <span className="text-[#5D7868] text-xl">
+            <span className="text-emerald-700 font-bold text-xl flex-shrink-0">
               →
             </span>
 
@@ -939,10 +1039,7 @@ function PatientHome({ onNav }: { onNav: (s: Screen) => void }) {
 
         </button>
 
-{/* Cognitive AI Report */}
-
-
-{/* Sahara.AI + SOS */}
+        {/* Sahara.AI + SOS */}
 
         <div className="grid grid-cols-2 gap-3">
 
@@ -950,18 +1047,18 @@ function PatientHome({ onNav }: { onNav: (s: Screen) => void }) {
             onClick={() =>
               onNav("voice-assistant")
             }
-            className="bg-[#F1ECFA] rounded-3xl p-5 text-left"
+            className="ms-glass ms-glass--purple ms-card-lift bg-violet-50/70 border border-violet-200/70 rounded-3xl p-5 text-left cursor-pointer"
           >
 
             <span className="text-3xl">
               🤖
             </span>
 
-            <h3 className="font-extrabold text-[#574A8D] mt-3">
+            <h3 className="font-extrabold text-[#182019] mt-3">
               Sahara.AI
             </h3>
 
-            <p className="text-xs text-[#766B9C] mt-1">
+            <p className="text-xs text-[#4F5A50] mt-1 leading-snug">
               Talk, ask questions and get help.
             </p>
 
@@ -969,21 +1066,25 @@ function PatientHome({ onNav }: { onNav: (s: Screen) => void }) {
 
           <button
             onClick={() =>
-              onNav("voice-assistant")
-            }
-            className="bg-[#FFF0F0] rounded-3xl p-5 text-left"
+              setIsSosModalOpen(true)}
+            className="ms-glass ms-card-lift border border-rose-200/70 rounded-3xl p-5 text-left cursor-pointer"
+            style={{"--ms-glass-tint":"rgb(232 64 64 / 6%)"} as React.CSSProperties}
           >
 
             <span className="text-3xl">
               🆘
             </span>
 
-            <h3 className="font-extrabold text-[#B64B4B] mt-3">
-              SOS Help
+            <h3 className="font-extrabold text-rose-700 mt-3">
+              {sosAlertStatus === "active" ? "SOS Active" : "SOS Help"}
             </h3>
 
-            <p className="text-xs text-[#9D6A6A] mt-1">
-              Get help when you need it.
+            <p className="text-xs text-[#667066] mt-1 leading-snug">
+              {sosAlertStatus === "active"
+                ? "Your caregiver can see this active alert."
+                : sosAlertStatus === "resolved"
+                ? "Your caregiver resolved the last SOS alert."
+                : "Create an alert for your linked caregiver."}
             </p>
 
           </button>
@@ -991,6 +1092,15 @@ function PatientHome({ onNav }: { onNav: (s: Screen) => void }) {
         </div>
 
       </div>
+      <SosModal
+        isOpen={isSosModalOpen}
+        onClose={() => setIsSosModalOpen(false)}
+        onConfirm={async () => {
+          const patient = auth.currentUser;
+          if (!patient) throw new Error("No authenticated patient is available.");
+          await createOrActivateSosAlert(patient.uid, "patient");
+        }}
+      />
     </div>
   );
 }
@@ -1805,14 +1915,14 @@ function Reminders({ onBack }: { onBack: () => void }) {
 }, []);
 
   return (
-    <div className="h-full flex flex-col bg-[#F8FAFB]">
+    <div className="h-full flex flex-col bg-[#FFFDF1]">
       <StatusBar />
-      <div className="bg-gradient-to-br from-[#F59E0B] to-[#D97706] px-5 pt-2 pb-5 rounded-b-[32px]">
+      <div className="ms-patient-header px-5 pt-3 pb-5 rounded-b-[32px] shadow-md">
         <div className="flex items-center gap-3">
           <BackButton onBack={onBack} light />
           <div>
             <h2 className="text-white text-xl font-extrabold">Reminders</h2>
-            <p className="text-amber-100 text-sm">Today's schedule</p>
+            <p className="text-[#EAF5E8] text-sm">Today's schedule</p>
           </div>
         </div>
       </div>
@@ -1823,8 +1933,8 @@ function Reminders({ onBack }: { onBack: () => void }) {
               <span className="text-2xl">{r.icon}</span>
             </div>
             <div className="flex-1">
-              <p className={`font-bold text-base ${done[i] ? "line-through text-[#90A4AE]" : "text-[#37474F]"}`}>{r.label}</p>
-              <p className="text-[#78909C] text-sm">{r.time}</p>
+              <p className={`font-bold text-base ${done[i] ? "line-through text-[#667066]" : "text-[#182019]"}`}>{r.label}</p>
+              <p className="text-[#4F5A50] text-sm">{r.time}</p>
             </div>
             <button
               onClick={async () => {
@@ -1851,7 +1961,7 @@ console.log("REMINDERS SAVED SUCCESSFULLY");
     console.error("Failed to save reminder state:", error);
   }
 }}
-              className={`w-10 h-10 rounded-full border-2 flex items-center justify-center transition-all ${done[i] ? "bg-[#43A047] border-[#43A047]" : "border-gray-200 bg-white"}`}
+              className={`w-10 h-10 rounded-full border-2 flex items-center justify-center transition-all ${done[i] ? "bg-[#2F7D32] border-[#2F7D32]" : "border-gray-200 bg-white"}`}
             >
               {done[i] && <span className="text-white text-lg">✓</span>}
             </button>
@@ -1873,26 +1983,42 @@ const stopSpeaking = () => {
 };
 
 const getWeather = async (city: string) => {
-  const geoResponse = await fetch(
-    `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}&count=1&language=en&format=json`
-  );
+  const cached = getCachedWeather(city);
+  if (cached) return cached;
 
-  const geoData = await geoResponse.json();
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), 8000);
 
-  if (!geoData.results?.length) {
-    return `I couldn't find weather information for ${city}.`;
+  try {
+    const geoResponse = await fetch(
+      `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}&count=1&language=en&format=json`,
+      { signal: controller.signal }
+    );
+
+    const geoData = await geoResponse.json();
+
+    if (!geoData.results?.length) {
+      return `I couldn't find weather information for ${city}.`;
+    }
+
+    const location = geoData.results[0];
+
+    const weatherResponse = await fetch(
+      `https://api.open-meteo.com/v1/forecast?latitude=${location.latitude}&longitude=${location.longitude}&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m&timezone=auto`,
+      { signal: controller.signal }
+    );
+
+    const weatherData = await weatherResponse.json();
+    const current = weatherData.current;
+
+    const weatherSummary = `The current weather in ${location.name} is ${current.temperature_2m}°C. It feels like ${current.apparent_temperature}°C, with ${current.relative_humidity_2m}% humidity and wind speed of ${current.wind_speed_10m} km/h.`;
+    setCachedWeather(city, weatherSummary);
+    return weatherSummary;
+  } catch {
+    return `Unable to fetch current weather for ${city}. Please try again later.`;
+  } finally {
+    window.clearTimeout(timeoutId);
   }
-
-  const location = geoData.results[0];
-
-  const weatherResponse = await fetch(
-    `https://api.open-meteo.com/v1/forecast?latitude=${location.latitude}&longitude=${location.longitude}&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m&timezone=auto`
-  );
-
-  const weatherData = await weatherResponse.json();
-  const current = weatherData.current;
-
-  return `The current weather in ${location.name} is ${current.temperature_2m}°C. It feels like ${current.apparent_temperature}°C, with ${current.relative_humidity_2m}% humidity and wind speed of ${current.wind_speed_10m} km/h.`;
 };
 
 const startVoice = () => {
@@ -1988,23 +2114,27 @@ const toggleListen = () => {
   </button>
 )}
         <div className="w-full">
-          <p className="text-[#78909C] text-sm font-semibold mb-3">Try asking:</p>
+          <p className="text-[#4F5A50] text-sm font-semibold mb-3">Try asking:</p>
           <div className="flex flex-col gap-2">
             {suggestions.map(s => (
               <button
-  type="button"
-  key={s}
-  onClick={() => {
-  setTranscript(s);
-setResponse("AI assistance will be connected later.");
-}}
-                className="bg-white rounded-2xl px-5 py-4 text-[#37474F] font-semibold text-base text-left shadow-sm border border-gray-100 active:scale-95 transition-transform">
+                type="button"
+                key={s}
+                onClick={() => {
+                  setTranscript(s);
+                  setResponse("AI assistance will be connected later.");
+                }}
+                className="bg-white rounded-2xl px-5 py-4 text-[#182019] font-semibold text-base text-left shadow-sm border border-gray-100 active:scale-95 transition-transform cursor-pointer"
+              >
                 💬 {s}
               </button>
             ))}
           </div>
         </div>
-        <button className="w-full py-5 bg-[#E53935] text-white text-xl font-extrabold rounded-2xl shadow-lg flex items-center justify-center gap-3">
+        <button
+          type="button"
+          className="w-full py-5 bg-[#E53935] text-white text-xl font-extrabold rounded-2xl shadow-lg flex items-center justify-center gap-3 cursor-pointer active:scale-95 transition-transform"
+        >
           <span className="text-2xl">🆘</span> Emergency SOS
         </button>
       </div>
@@ -2015,101 +2145,93 @@ setResponse("AI assistance will be connected later.");
 // ─── Patient Profile ──────────────────────────────────────────────────────────
 function PatientProfile({ onBack }: { onBack: () => void }) {
   const [notifications, setNotifications] = useState(true);
-  const [largeText, setLargeText] = useState(true);
   const [voiceReminders, setVoiceReminders] = useState(false);
 
   const Toggle = ({
     value,
     onChange,
+    label,
   }: {
     value: boolean;
     onChange: () => void;
+    label: string;
   }) => (
     <button
+      type="button"
+      role="switch"
+      aria-checked={value}
+      aria-label={`Toggle ${label}`}
       onClick={onChange}
-      className={`w-14 h-8 rounded-full relative ${
-        value ? "bg-[#2E7D73]" : "bg-gray-200"
-      }`}
+      className="min-w-[44px] min-h-[44px] p-1 flex items-center justify-center cursor-pointer active:scale-95 transition-transform"
     >
       <div
-        className={`absolute top-1 w-6 h-6 bg-white rounded-full shadow ${
-          value ? "right-1" : "left-1"
+        className={`w-11 h-6 rounded-full relative transition-colors duration-200 ${
+          value ? "bg-[#2F7D32]" : "bg-slate-300"
         }`}
-      />
+      >
+        <div
+          className={`absolute top-[2px] w-5 h-5 bg-white rounded-full shadow-sm transition-transform duration-200 ${
+            value ? "translate-x-5" : "translate-x-1"
+          }`}
+        />
+      </div>
     </button>
   );
 
   return (
-    <div className="h-full flex flex-col bg-[#F8FAFB] overflow-y-auto">
+    <div className="h-full flex flex-col bg-[#FFFDF1] overflow-y-auto">
       <StatusBar />
 
       {/* Profile Header */}
-      <div className="bg-gradient-to-br from-[#2E7D73] to-[#1A5C54] px-5 pt-2 pb-7 rounded-b-[32px]">
+      <div className="ms-patient-header ms-patient-header--profile px-5 pt-3 pb-5 rounded-b-[28px] shadow-sm">
         <div className="flex items-center gap-3">
           <BackButton onBack={onBack} light />
-          <h2 className="text-white text-xl font-extrabold">
+          <h2 className="text-white text-[21px] font-bold tracking-tight leading-none">
             My Profile
           </h2>
         </div>
 
-        <div className="flex flex-col items-center mt-5">
-          <div className="w-20 h-20 rounded-full bg-[#D9F4F1] flex items-center justify-center">
-            <span className="text-4xl">👴</span>
+        <div className="flex flex-col items-center mt-3">
+          <div className="w-16 h-16 rounded-full bg-white/20 border border-white/35 flex items-center justify-center shadow-sm">
+            <span className="text-3xl">👴</span>
           </div>
 
-          <h3 className="text-white text-2xl font-extrabold mt-3">
+          <h3 className="text-white text-[26px] font-bold mt-2 tracking-tight leading-tight">
             Ravi Kumar
           </h3>
 
-          <p className="text-[#D9F4F1] text-sm">
+          <p className="text-[#EAF5E8]/90 text-[15px] font-medium mt-0.5">
             Age 72
           </p>
         </div>
       </div>
 
-      <div className="px-5 pt-5 flex flex-col gap-4 pb-8">
-
-       <div className="px-5 pt-5 flex flex-col gap-4 pb-8">
-
-  {/* Settings */}
-  <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100">
-    
-  </div>
-
-  
-</div>
+      <div className="px-5 pt-4 flex flex-col gap-3.5 pb-6">
 
         {/* Settings */}
-        <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100">
-          <h4 className="text-[#37474F] font-extrabold text-lg mb-3">
-            ⚙️ Settings
+        <div className="ms-glass rounded-2xl p-4 shadow-sm border border-slate-200/70">
+          <h4 className="text-[#182019] text-[19px] font-semibold mb-1.5 flex items-center gap-2">
+            <span>⚙️</span>
+            <span>Settings</span>
           </h4>
 
-          <div className="flex items-center justify-between py-3 border-b border-gray-50">
-            <span className="text-[#37474F] font-semibold text-sm">
+          <div className="flex items-center justify-between py-2.5 border-b border-gray-100">
+            <span className="text-[#182019] text-[15px] font-medium leading-relaxed">
               Notifications
             </span>
             <Toggle
+              label="Notifications"
               value={notifications}
               onChange={() => setNotifications(v => !v)}
             />
           </div>
 
-          <div className="flex items-center justify-between py-3 border-b border-gray-50">
-            <span className="text-[#37474F] font-semibold text-sm">
-              Large Text
-            </span>
-            <Toggle
-              value={largeText}
-              onChange={() => setLargeText(v => !v)}
-            />
-          </div>
-
-          <div className="flex items-center justify-between py-3">
-            <span className="text-[#37474F] font-semibold text-sm">
+          <div className="flex items-center justify-between py-2.5">
+            <span className="text-[#182019] text-[15px] font-medium leading-relaxed">
               Voice Reminders
             </span>
             <Toggle
+              label="Voice Reminders"
               value={voiceReminders}
               onChange={() => setVoiceReminders(v => !v)}
             />
@@ -2118,16 +2240,18 @@ function PatientProfile({ onBack }: { onBack: () => void }) {
 
         {/* Logout */}
         <button
+          type="button"
           onClick={async () => {
             await signOut(auth);
             window.location.reload();
           }}
-          className="w-full py-4 bg-red-50 border-2 border-red-200 text-red-600 text-lg font-bold rounded-2xl"
+          className="w-full min-h-[48px] py-3 bg-rose-50 border border-rose-200 text-rose-700 text-[15px] font-bold rounded-2xl hover:bg-rose-100 transition active:scale-95 cursor-pointer shadow-xs flex items-center justify-center gap-2"
         >
-          🚪 Logout
+          <span>🚪</span>
+          <span>Logout</span>
         </button>
 
-        <p className="text-center text-[#B0BEC5] text-xs">
+        <p className="text-center text-[#667066] text-[13px] font-medium tracking-wide mt-0.5">
           MindSathi
         </p>
 
@@ -2282,6 +2406,7 @@ function PictureRecall({ onBack }: { onBack: () => void }) {
   };
 
   const restart = () => {
+    resultSaved.current = false;
     setPhase("intro");
     setQIndex(0);
     setScore(0);
@@ -2799,6 +2924,7 @@ function FamiliarPlace({ onBack }: { onBack: () => void }) {
   const [showFeedback, setShowFeedback] = useState(false);
 
   const restart = () => {
+    resultSaved.current = false;
     setPhase("intro");
     setRoundIdx(0);
     setScore(0);
@@ -2959,6 +3085,25 @@ function FamiliarPlace({ onBack }: { onBack: () => void }) {
 export default function App() {
   const [screen, setScreen] = useState<Screen>("patient-home");
 
+  useEffect(() => {
+    const patient = auth.currentUser;
+    if (!patient) return;
+
+    return onSnapshot(
+      collection(db, "patients", patient.uid, "gameResults"),
+      (gameSnapshot) => {
+        if (gameSnapshot.metadata.hasPendingWrites) return;
+        const gameHistory = gameSnapshot.docs.map((gameDoc) =>
+          normalizeCognitiveGameResult(gameDoc.id, gameDoc.data())
+        );
+        void syncCanonicalCognitiveAIReport(patient.uid, gameHistory).catch(
+          (error) => console.error("Patient cognitive report sync failed:", error)
+        );
+      },
+      (error) => console.error("Patient game report listener failed:", error)
+    );
+  }, []);
+
   const nav = (s: Screen) => setScreen(s);
 
   const renderScreen = () => {
@@ -2998,9 +3143,9 @@ case "familiar-place":
   };
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-[#B0BEC5]/20">
+    <div className="ms-app-shell ms-patient-shell flex items-center justify-center min-h-screen overflow-x-hidden bg-[#B0BEC5]/20">
       <div
-        className="relative w-[390px] h-[844px] bg-[#F8FAFB] rounded-[44px] shadow-2xl overflow-hidden flex flex-col border border-gray-200"
+        className="ms-patient-device relative w-[390px] h-[844px] bg-[#FFFDF1] rounded-[44px] shadow-2xl overflow-hidden flex flex-col border border-gray-200"
         style={{boxShadow:"0 32px 64px rgba(0,0,0,0.18), 0 0 0 1px rgba(255,255,255,0.5) inset"}}
       >
         <div className="flex-1 overflow-hidden flex flex-col">

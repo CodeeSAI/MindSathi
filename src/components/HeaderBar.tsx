@@ -16,10 +16,10 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
   onTriggerSos,
 }) => {
   return (
-    <header className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-xs">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between gap-4">
+      <header className="ms-glass sticky top-0 z-30 border-b border-slate-200/80 shadow-xs">
+      <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
         {/* Brand & SIH Badge */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 min-w-0">
           <div className="w-10 h-10 rounded-xl bg-emerald-600 flex items-center justify-center text-white shadow-sm shadow-emerald-200">
             <Shield className="w-5 h-5" />
           </div>
@@ -39,7 +39,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
         </div>
 
         {/* Live Patient Status Badge */}
-        <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center justify-between sm:justify-end gap-2 sm:gap-3">
           <div
             className={`hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border ${
               patientStatus === 'Emergency'
@@ -63,7 +63,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
           <button
             onClick={onTriggerSos}
             id="header-sos-trigger-btn"
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold shadow-xs transition-colors"
+            className="min-h-10 flex items-center gap-1.5 px-3 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold shadow-xs transition-colors"
           >
             <AlertTriangle className="w-3.5 h-3.5" />
             <span>SOS Alert</span>
@@ -74,7 +74,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
             <button
               onClick={() => setViewMode('app')}
               id="switch-to-app-view-btn"
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+              className={`min-h-9 flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold transition-all ${
                 viewMode === 'app'
                   ? 'bg-white text-emerald-700 shadow-xs border border-slate-200/80'
                   : 'text-slate-600 hover:text-slate-900'
@@ -86,14 +86,15 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
             <button
               onClick={() => setViewMode('code')}
               id="switch-to-code-view-btn"
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+              className={`min-h-9 flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold transition-all ${
                 viewMode === 'code'
                   ? 'bg-white text-emerald-700 shadow-xs border border-slate-200/80'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
               <Code2 className="w-3.5 h-3.5" />
-              <span>Flutter Code (Dart)</span>
+              <span className="hidden sm:inline">Flutter Code (Dart)</span>
+              <span className="sm:hidden">Code</span>
             </button>
           </div>
         </div>

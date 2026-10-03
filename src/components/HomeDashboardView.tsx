@@ -146,16 +146,16 @@ export const HomeDashboardView: React.FC<HomeDashboardViewProps> = ({
       <div className="flex items-center justify-between pt-1">
 
         <div>
-          <div className="flex items-center gap-1.5 text-emerald-600 font-bold text-[10px] uppercase tracking-wider">
+          <div className="flex items-center gap-1.5 text-emerald-600 font-semibold text-[11px] uppercase tracking-wider">
             <Sun className="w-3.5 h-3.5" />
             <span>Caregiver Dashboard</span>
           </div>
 
-          <h2 className="text-xl font-extrabold text-slate-900 tracking-tight">
+          <h2 className="text-xl font-extrabold text-slate-900 tracking-tight mt-0.5">
             Good Morning
           </h2>
 
-          <p className="text-xs text-slate-500 font-medium">
+          <p className="text-xs text-slate-500 font-medium mt-0.5">
             Monitoring {patient.fullName}
           </p>
         </div>
@@ -214,7 +214,7 @@ export const HomeDashboardView: React.FC<HomeDashboardViewProps> = ({
               </h3>
 
               <span
-                className={`px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase shrink-0 ${
+                className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase shrink-0 ${
                   patient.status === 'Emergency'
                     ? 'bg-rose-100 text-rose-700'
                     : patient.status === 'Needs Attention'
@@ -312,36 +312,33 @@ export const HomeDashboardView: React.FC<HomeDashboardViewProps> = ({
         </div>
 
 
-       
+      </div>
 
-         
       {/* ===================================================== */}
       {/* MEDICINE */}
       {/* ===================================================== */}
 
-    <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm">
-                 <div className="flex items-center gap-2">
-
-            <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
+      <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5 flex-1 min-w-0">
+            <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
               <Pill className="w-4 h-4" />
             </div>
 
-            <div>
+            <div className="min-w-0">
               <h4 className="text-sm font-bold text-slate-900">
                 Medicine Completion
               </h4>
 
-              <p className="text-[10px] text-slate-500">
+              <p className="text-xs text-slate-500 mt-0.5">
                 Today's scheduled doses
               </p>
             </div>
-
           </div>
 
-          <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-1 rounded-md">
+          <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-1 rounded-lg shrink-0">
             {completedMeds} / {totalMeds}
           </span>
-
         </div>
 
         <div className="w-full bg-slate-100 rounded-full h-2 mt-3 overflow-hidden">
@@ -376,34 +373,34 @@ export const HomeDashboardView: React.FC<HomeDashboardViewProps> = ({
 
       <div
         onClick={() => onNavigate('memory_progress')}
-        className="rounded-2xl p-4 bg-gradient-to-br from-teal-800 to-emerald-700 text-white shadow-md cursor-pointer"
+        className="ms-card-lift ms-glass ms-glass--purple rounded-2xl p-4 bg-white border border-slate-200 text-slate-900 shadow-sm cursor-pointer"
       >
 
         <div className="flex items-center justify-between">
 
           <div className="flex items-center gap-3">
 
-            <div className="w-11 h-11 rounded-xl bg-white/15 flex items-center justify-center">
-              <Brain className="w-6 h-6" />
+            <div className="w-11 h-11 rounded-xl bg-emerald-50 flex items-center justify-center">
+              <Brain className="w-6 h-6 text-emerald-700" />
             </div>
 
             <div>
 
-              <span className="text-[10px] font-semibold text-emerald-100 uppercase tracking-wide">
+              <span className="text-[11px] font-semibold text-emerald-800 uppercase tracking-wide">
                 Today's Memory Game Score
               </span>
 
-              <div className="flex items-baseline gap-2">
+              <div className="flex items-baseline gap-2 mt-1">
 
                 <span className="text-3xl font-black">
                   {memoryScore}/100
                 </span>
 
-                <span className="px-1.5 py-0.5 rounded bg-white/20 text-[10px] font-bold">
+                <span className="px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-800 text-[11px] font-bold">
                   {gameHistory.length}{' '}
                   {gameHistory.length === 1
-                    ? 'Game'
-                    : 'Games'}
+                    ? 'session'
+                    : 'sessions'}
                 </span>
 
               </div>
@@ -411,11 +408,11 @@ export const HomeDashboardView: React.FC<HomeDashboardViewProps> = ({
             </div>
           </div>
 
-          <ChevronRight className="w-5 h-5 text-white/70" />
+          <ChevronRight className="w-5 h-5 text-slate-400" />
 
         </div>
 
-        <p className="text-xs text-emerald-100 mt-2">
+        <p className="text-xs text-slate-600 mt-2">
           {gameHistory.length > 0
             ? `Based on ${gameHistory.length} recorded cognitive ${
                 gameHistory.length === 1 ? 'session' : 'sessions'

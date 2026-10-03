@@ -43,12 +43,12 @@ export const AddReminderModal: React.FC<AddReminderModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150">
-      <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200">
-        <div className="flex justify-between items-center mb-4">
-          <h3 className="text-lg font-bold text-slate-900">
+         <div className="ms-glass ms-glass--amber bg-white rounded-2xl max-w-md w-full max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain p-5 sm:p-6 shadow-xl border border-amber-100">
+        <div className="flex justify-between items-start mb-5">
+          <h3 className="text-lg font-bold text-slate-900 leading-snug">
             {existingReminder ? 'Edit Caregiver Reminder' : 'Add New Patient Reminder'}
           </h3>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 p-1 rounded-lg">
+          <button onClick={onClose} className="min-h-10 min-w-10 flex items-center justify-center text-slate-400 hover:text-slate-600 rounded-xl hover:bg-slate-100 transition-colors shrink-0 ml-2">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -59,7 +59,7 @@ export const AddReminderModal: React.FC<AddReminderModalProps> = ({
             <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
               Category
             </label>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-1 min-[380px]:grid-cols-3 gap-2">
               {(['Medicine', 'Water', 'Appointment'] as ReminderCategory[]).map((cat) => {
                 const isSelected = category === cat;
                 return (
@@ -67,7 +67,7 @@ export const AddReminderModal: React.FC<AddReminderModalProps> = ({
                     key={cat}
                     type="button"
                     onClick={() => setCategory(cat)}
-                    className={`py-2 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 border transition-all ${
+                    className={`min-h-11 py-2 px-2 min-[380px]:px-1.5 rounded-xl text-[11px] font-bold flex items-center justify-center gap-1 border transition-all ${
                       isSelected
                         ? 'bg-emerald-50 text-emerald-700 border-emerald-300 shadow-xs'
                         : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
@@ -104,7 +104,7 @@ export const AddReminderModal: React.FC<AddReminderModalProps> = ({
                   ? 'e.g. Mid-Morning Electrolyte Water'
                   : 'e.g. Dr. Sharma Memory Assessment'
               }
-              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+              className="w-full min-h-11 px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
             />
           </div>
 
@@ -122,7 +122,7 @@ export const AddReminderModal: React.FC<AddReminderModalProps> = ({
                   ? 'e.g. 1 Tablet after breakfast with water'
                   : 'e.g. Apollo Geriatric Room 304'
               }
-              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+              className="w-full min-h-11 px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
             />
           </div>
 
@@ -138,7 +138,7 @@ export const AddReminderModal: React.FC<AddReminderModalProps> = ({
                 value={time}
                 onChange={(e) => setTime(e.target.value)}
                 placeholder="e.g. 08:30 AM"
-                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 font-medium"
+                className="w-full min-h-11 px-3 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 font-medium"
               />
             </div>
             <div>
@@ -148,7 +148,7 @@ export const AddReminderModal: React.FC<AddReminderModalProps> = ({
               <select
                 value={repeat}
                 onChange={(e) => setRepeat(e.target.value)}
-                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white font-medium"
+                className="w-full min-h-11 px-3 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white font-medium"
               >
                 <option value="Daily">Daily</option>
                 <option value="Twice a day">Twice a day</option>
@@ -164,14 +164,14 @@ export const AddReminderModal: React.FC<AddReminderModalProps> = ({
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 py-2.5 px-4 rounded-xl border border-slate-300 text-slate-700 text-sm font-semibold hover:bg-slate-50 transition-colors"
+              className="flex-1 min-h-11 py-2.5 px-4 rounded-xl border border-slate-300 text-slate-700 text-sm font-semibold hover:bg-slate-50 transition-colors"
             >
               Cancel
             </button>
             <button
               type="submit"
               id="save-reminder-submit-btn"
-              className="flex-1 py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold shadow-md shadow-emerald-200 transition-colors"
+              className="flex-1 min-h-11 py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold shadow-sm transition-colors"
             >
               {existingReminder ? 'Update' : 'Create Reminder'}
             </button>

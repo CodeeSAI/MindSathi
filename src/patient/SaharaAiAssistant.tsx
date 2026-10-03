@@ -1,7 +1,21 @@
 import React, { useEffect, useRef, useState } from "react";
 import { collection, doc, getDoc, getDocs, onSnapshot } from "firebase/firestore";
 import { auth, db } from "../firebase";
-import { GoogleGenAI } from "@google/genai";
+import {
+  checkSaharaRequestAllowed,
+  startSaharaRequest,
+  completeSaharaRequest,
+  SAHARA_LIMIT_FALLBACK_TEXT,
+} from "../services/apiUsageGuard";
+
+interface CachedPatientContext {
+  timestamp: number;
+  patientName: string;
+  pendingReminders: string[];
+  playedGames: string[];
+}
+let moduleCachedContext: CachedPatientContext | null = null;
+const CONTEXT_CACHE_TTL_MS = 3 * 60 * 1000; // 3 minutes
 import {
   Brain,
   Mic,
@@ -130,6 +144,7 @@ export function SaharaAiAssistant({ onNav, onBack }: SaharaAiAssistantProps) {
   const [pendingReminders, setPendingReminders] = useState<string[]>([]);
   const [playedGames, setPlayedGames] = useState<string[]>([]);
   const [showLanguageDropdown, setShowLanguageDropdown] = useState(false);
+  const [isLimitReached, setIsLimitReached] = useState(false);
 
   const recognitionRef = useRef<any>(null);
   const isRecognizingRef = useRef(false);
@@ -149,27 +164,54 @@ export function SaharaAiAssistant({ onNav, onBack }: SaharaAiAssistantProps) {
     scrollToBottom();
   }, [messages, isListening, isProcessing, speechStatusMessage]);
 
-  // Load patient context from Firestore
+  // Check initial quota state on mount
+  useEffect(() => {
+    const quota = checkSaharaRequestAllowed();
+    if (!quota.allowed && (quota.reason === "daily_limit" || quota.reason === "global_limit")) {
+      setIsLimitReached(true);
+    }
+  }, []);
+
+  // Load patient context with in-memory caching to minimize Firestore reads
   useEffect(() => {
     const user = auth.currentUser;
     if (!user) return;
 
     let isMounted = true;
 
+    // Use cached context if fresh (< 3 mins)
+    const now = Date.now();
+    if (moduleCachedContext && now - moduleCachedContext.timestamp < CONTEXT_CACHE_TTL_MS) {
+      setPatientName(moduleCachedContext.patientName);
+      setPendingReminders(moduleCachedContext.pendingReminders);
+      setPlayedGames(moduleCachedContext.playedGames);
+      return;
+    }
+
     const loadContext = async () => {
       try {
+        let loadedName = patientName;
+        let loadedReminders = pendingReminders;
+        let loadedGames = playedGames;
+
         // Patient profile
         const userDoc = await getDoc(doc(db, "users", user.uid));
         if (userDoc.exists() && isMounted) {
           const data = userDoc.data();
           const name = data?.name || data?.fullName;
-          if (name) setPatientName(name);
+          if (name) {
+            loadedName = name;
+            setPatientName(name);
+          }
         } else {
           const pDoc = await getDoc(doc(db, "patients", user.uid));
           if (pDoc.exists() && isMounted) {
             const data = pDoc.data();
             const name = data?.name || data?.fullName;
-            if (name) setPatientName(name);
+            if (name) {
+              loadedName = name;
+              setPatientName(name);
+            }
           }
         }
 
@@ -179,7 +221,7 @@ export function SaharaAiAssistant({ onNav, onBack }: SaharaAiAssistantProps) {
           const data = remSnap.data();
           const remList = Array.isArray(data.reminders) ? data.reminders : [];
           const doneList = Array.isArray(data.done) ? data.done : [];
-          const pending = remList
+          loadedReminders = remList
             .map((item: any, idx: number) => ({
               label: item.label || item.title || "Reminder",
               time: item.time || "",
@@ -187,7 +229,7 @@ export function SaharaAiAssistant({ onNav, onBack }: SaharaAiAssistantProps) {
             }))
             .filter((item: any) => !item.done)
             .map((item: any) => (item.time ? `${item.label} at ${item.time}` : item.label));
-          setPendingReminders(pending);
+          if (isMounted) setPendingReminders(loadedReminders);
         }
 
         // Games played today
@@ -205,8 +247,16 @@ export function SaharaAiAssistant({ onNav, onBack }: SaharaAiAssistantProps) {
               }
             }
           });
-          setPlayedGames(Array.from(played));
+          loadedGames = Array.from(played);
+          if (isMounted) setPlayedGames(loadedGames);
         }
+
+        moduleCachedContext = {
+          timestamp: Date.now(),
+          patientName: loadedName,
+          pendingReminders: loadedReminders,
+          playedGames: loadedGames,
+        };
       } catch (err) {
         console.warn("Context load notice:", err);
       }
@@ -310,7 +360,7 @@ export function SaharaAiAssistant({ onNav, onBack }: SaharaAiAssistantProps) {
     return undefined;
   };
 
-    // Send message to Sahara.AI using Gemini
+  // Send a concise message to Sahara using Groq with zero-cost protection
   const sendMessage = async (userText: string) => {
     const trimmed = userText.trim();
     if (!trimmed || isProcessing) return;
@@ -330,25 +380,45 @@ export function SaharaAiAssistant({ onNav, onBack }: SaharaAiAssistantProps) {
 
     setMessages((prev) => [...prev, userMessage]);
     setInputValue("");
+
+    // Guard: daily limit, global limit, cooldown, and in-flight debounce
+    const guardCheck = checkSaharaRequestAllowed();
+    if (!guardCheck.allowed) {
+      if (guardCheck.reason === "daily_limit" || guardCheck.reason === "global_limit") {
+        setIsLimitReached(true);
+      }
+      const quotaReply = guardCheck.message || SAHARA_LIMIT_FALLBACK_TEXT;
+      const limitMessage: ChatMessage = {
+        id: `sahara-quota-${Date.now()}`,
+        sender: "sahara",
+        text: quotaReply,
+        timestamp: new Date().toLocaleTimeString([], {
+          hour: "numeric",
+          minute: "2-digit",
+        }),
+      };
+      setMessages((prev) => [...prev, limitMessage]);
+      return;
+    }
+
+    startSaharaRequest();
     setIsProcessing(true);
 
+    let fetchSuccess = false;
+
     try {
-      const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+      const apiKey = import.meta.env.VITE_GROQ_API_KEY;
 
       if (!apiKey) {
-        throw new Error("Gemini API key is missing.");
+        throw new Error("Sahara is not configured.");
       }
-
-      const ai = new GoogleGenAI({
-        apiKey,
-      });
 
       const conversationHistory = messages
         .filter((m) => m.id !== "initial-welcome")
         .slice(-6)
         .map((m) => ({
-          role: m.sender === "user" ? "user" : "model",
-          text: m.text,
+          role: m.sender === "user" ? ("user" as const) : ("assistant" as const),
+          content: m.text,
         }));
 
       const languageName =
@@ -358,93 +428,88 @@ export function SaharaAiAssistant({ onNav, onBack }: SaharaAiAssistantProps) {
           ? "Assamese"
           : "English";
 
-      const systemInstruction = `
-You are Sahara.AI, a warm, patient and elderly-friendly AI companion
-inside MemoryNest, an AI-based cognitive assistance platform for elderly
-users.
+      const systemInstruction = `You are Sahara, a warm, supportive cognitive-support companion for older adults. Be clear, patient, reassuring, elderly-friendly, and concise; use simple, familiar language and short responses of 1-4 sentences. Be multilingual-friendly and reply in ${languageName}.
 
-Patient:
+You are not a doctor and are not a replacement for professional medical care. Never diagnose a condition or invent medicines, doses, appointments, doctors, or medical results. For emergencies, encourage the person to contact their caregiver, local emergency services, or a medical professional. Never claim that you contacted anyone.
+
+Patient context:
 - Name: ${patientName}
-- Current language: ${languageName}
+- Selected language: ${languageName}
+- Pending reminders today: ${pendingReminders.length > 0 ? pendingReminders.join("; ") : "None"}
+- Games completed today: ${playedGames.length > 0 ? playedGames.join("; ") : "None"}
+- Current date and time: ${new Date().toLocaleString([], { dateStyle: "full", timeStyle: "short" })}
 
-Today's pending reminders:
-${pendingReminders.length > 0
-  ? pendingReminders.map((r) => `- ${r}`).join("\n")
-  : "- No pending reminders"}
+Help with the supplied reminders, cognitive games, daily routines, and Memory Garden. Use only the context above and the conversation; do not make up personal details.`;
 
-Games completed today:
-${playedGames.length > 0
-  ? playedGames.map((g) => `- ${g}`).join("\n")
-  : "- No games completed yet"}
+      const requestMessages = [
+        { role: "system" as const, content: systemInstruction },
+        ...conversationHistory,
+        { role: "user" as const, content: trimmed },
+      ];
 
-Current date:
-${new Date().toLocaleDateString([], {
-  weekday: "long",
-  month: "long",
-  day: "numeric",
-  year: "numeric",
-})}
+      const runGroqFetch = async (): Promise<string> => {
+        const controller = new AbortController();
+        const timeoutId = window.setTimeout(() => controller.abort(), 20000);
 
-Current time:
-${new Date().toLocaleTimeString([], {
-  hour: "numeric",
-  minute: "2-digit",
-})}
+        try {
+          const response = await fetch(
+            "https://api.groq.com/openai/v1/chat/completions",
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${apiKey}`,
+              },
+              body: JSON.stringify({
+                model: "openai/gpt-oss-20b",
+                messages: requestMessages,
+                max_completion_tokens: 240,
+                temperature: 0.6,
+              }),
+              signal: controller.signal,
+            }
+          );
 
-Rules:
-1. Speak simply and warmly.
-2. Keep responses short, usually 1-4 sentences.
-3. Be encouraging and respectful.
-4. Help with reminders, games, daily routines and Memory Garden.
-5. Encourage cognitive activities when appropriate.
-6. Never diagnose dementia or another medical condition.
-7. Never invent medicines, doses, appointments, doctors or medical results.
-8. If the user asks for emergency medical help, tell them to contact
-   their caregiver, local emergency services or a medical professional.
-9. Answer in ${languageName}.
-10. Never claim that you called a caregiver or emergency service.
-`;
+          if (!response.ok) {
+            const status = response.status;
+            // 401, 403, and 429 are strictly non-retryable
+            const nonRetryable = status === 401 || status === 403 || status === 429;
+            const error = new Error(`Groq request failed with status ${status}`);
+            (error as any).status = status;
+            (error as any).nonRetryable = nonRetryable;
+            throw error;
+          }
 
-      const historyText =
-        conversationHistory.length > 0
-          ? conversationHistory
-              .map(
-                (m) =>
-                  `${m.role === "user" ? "User" : "Sahara"}: ${m.text}`
-              )
-              .join("\n")
-          : "No previous conversation.";
+          const result: {
+            choices?: { message?: { content?: unknown } }[];
+          } = await response.json();
+          const content = result.choices?.[0]?.message?.content;
+          return typeof content === "string" ? content.trim() : "";
+        } finally {
+          window.clearTimeout(timeoutId);
+        }
+      };
 
-      const prompt = `
-${systemInstruction}
-
-Previous conversation:
-${historyText}
-
-User's new message:
-${trimmed}
-
-Respond as Sahara.AI.
-`;
-
-      let result;
-
-try {
-  result = await ai.models.generateContent({
-    model: "gemini-3.8-flash",
-    contents: prompt,
-  });
-} catch (firstError) {
-  console.warn("Primary Gemini model unavailable, trying fallback:", firstError);
-
-  result = await ai.models.generateContent({
-    model: "gemini-3.6-flash",
-    contents: prompt,
-  });
-}
+      let generatedText = "";
+      try {
+        generatedText = await runGroqFetch();
+        fetchSuccess = true;
+      } catch (firstErr: any) {
+        if (firstErr?.nonRetryable) {
+          throw firstErr;
+        }
+        // At most 1 controlled retry for transient network / 5xx error
+        console.warn("Transient Groq failure, attempting 1 controlled retry...");
+        try {
+          generatedText = await runGroqFetch();
+          fetchSuccess = true;
+        } catch (retryErr) {
+          throw retryErr;
+        }
+      }
 
       const replyText =
-        result.text?.trim() ||
+        generatedText ||
         "I am right here with you. How can I help you today?";
 
       const navAction = detectNavigationAction(
@@ -470,14 +535,16 @@ try {
         speakMessage(aiMessage.id, aiMessage.text);
       }, 150);
     } catch (err: any) {
-      console.error("Sahara Gemini error:", err);
+      console.warn("Sahara reply unavailable; using friendly fallback.");
 
-      const fallbackReply =
-        language === "hi-IN"
-          ? "मैं आपके साथ हूँ। कृपया थोड़ी देर बाद फिर से पूछें।"
-          : language === "as-IN"
-          ? "মই আপোনাৰ লগত আছোঁ। অলপ পিছত আকৌ সোধক।"
-          : "I am right here with you. Please try again in a moment.";
+      const is429 = err?.status === 429;
+      const fallbackReply = is429
+        ? "AI help is currently busy. Please take your time and try again in a little while."
+        : language === "hi-IN"
+        ? "मैं आपके साथ हूँ। कृपया थोड़ी देर बाद फिर से पूछें।"
+        : language === "as-IN"
+        ? "মই আপোনাৰ লগত আছোঁ। অলপ পিছত আকৌ সোধক।"
+        : "I am right here with you. Please try again in a moment.";
 
       const errorMessage: ChatMessage = {
         id: `sahara-error-${Date.now()}`,
@@ -491,6 +558,7 @@ try {
 
       setMessages((prev) => [...prev, errorMessage]);
     } finally {
+      completeSaharaRequest(fetchSuccess);
       setIsProcessing(false);
     }
   };
@@ -604,10 +672,9 @@ try {
   };
 
   return (
-    <div className="h-full flex flex-col bg-[#F8FAFB] relative overflow-hidden select-none">
+    <div className="ms-sahara h-full flex flex-col bg-[#FFFDF1] relative overflow-hidden select-none">
       {/* ─── STATUS BAR ─── */}
-      <div className="flex items-center justify-between px-6 pt-3 pb-1 text-xs font-semibold text-[#37474F]">
-        <span>9:41</span>
+      <div className="flex items-center justify-end px-6 pt-3 pb-1 text-xs font-semibold text-[#182019]">
         <div className="flex gap-1.5 items-center">
           <span>●●●</span>
           <span>WiFi</span>
@@ -616,7 +683,7 @@ try {
       </div>
 
       {/* ─── HEADER BAR: DEEP TEAL WITH SAHARA BRANDING ─── */}
-      <div className="bg-gradient-to-r from-[#2E7D73] to-[#1A5C54] px-4 pt-2 pb-3.5 rounded-b-[28px] shadow-md z-20">
+      <div className="ms-sahara-header bg-gradient-to-r from-[#2E7D73] to-[#1A5C54] px-4 pt-2 pb-3.5 rounded-b-[28px] shadow-md z-20">
         <div className="flex items-center justify-between gap-2">
           {/* Back Button & Logo Brand */}
           <div className="flex items-center gap-2.5">
@@ -626,25 +693,25 @@ try {
                 cancelListening();
                 onBack();
               }}
-              className="w-10 h-10 rounded-full bg-white/15 hover:bg-white/25 active:scale-95 transition-all flex items-center justify-center text-white"
+              className="w-10 h-10 rounded-full bg-white/15 hover:bg-white/25 active:scale-95 transition-all flex items-center justify-center text-white cursor-pointer"
               aria-label="Go Back"
             >
               <ArrowLeft className="w-5 h-5" />
             </button>
 
             <div className="flex items-center gap-2.5">
-              <div className="w-10 h-10 rounded-2xl bg-white/20 backdrop-blur-md border border-white/25 flex items-center justify-center text-white shadow-inner">
-                <Brain className="w-6 h-6 text-[#A8DADB]" />
+              <div className="ms-sahara-orb ms-glass ms-glass--purple w-10 h-10 rounded-2xl border flex items-center justify-center text-violet-700">
+                <Brain className="w-6 h-6 text-violet-700" />
               </div>
               <div>
                 <div className="flex items-center gap-1.5">
                   <h1 className="text-white text-lg font-black tracking-tight leading-none">
-                    SAHARA.AI
+                    Sahara AI
                   </h1>
                   <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
                 </div>
-                <p className="text-[#D9F4F1] text-xs font-medium mt-0.5">
-                  "Your AI Companion"
+                <p className="text-[#EAF5E8] text-xs font-medium mt-0.5">
+                  Your memory companion
                 </p>
               </div>
             </div>
@@ -656,7 +723,7 @@ try {
             <div className="relative">
               <button
                 onClick={() => setShowLanguageDropdown((prev) => !prev)}
-                className="flex items-center gap-1 px-2.5 py-1.5 rounded-full bg-white/15 hover:bg-white/25 border border-white/20 text-white text-xs font-bold transition-all active:scale-95"
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-full bg-white/15 hover:bg-white/25 border border-white/20 text-white text-xs font-bold transition-all active:scale-95 cursor-pointer"
                 title="Change Language"
               >
                 <span>{currentLangConfig.flag}</span>
@@ -680,8 +747,8 @@ try {
                           setShowLanguageDropdown(false);
                           stopSpeaking();
                         }}
-                        className={`w-full flex items-center justify-between px-3 py-2 text-xs font-medium text-left transition-colors ${
-                          isSelected ? "bg-[#D9F4F1] text-[#2E7D73] font-bold" : "text-slate-700 hover:bg-slate-50"
+                        className={`w-full flex items-center justify-between px-3 py-2 text-xs font-medium text-left transition-colors cursor-pointer ${
+                          isSelected ? "bg-emerald-50 text-[#2F7D32] font-bold" : "text-slate-700 hover:bg-slate-50"
                         }`}
                       >
                         <span className="flex items-center gap-2">
@@ -708,6 +775,14 @@ try {
           </div>
         </div>
       </div>
+
+      {/* Friendly Cost Safety Indicator if daily quota reached */}
+      {isLimitReached && (
+        <div className="mx-4 mt-2 px-3 py-1.5 rounded-xl bg-amber-50 border border-amber-200/80 text-amber-900 text-xs font-medium flex items-center gap-2 shadow-xs animate-fade-in">
+          <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0" />
+          <span>AI limit reached for today. You can still play all games and check reminders.</span>
+        </div>
+      )}
 
       {/* ─── CHAT MESSAGES STREAM ─── */}
       <div className="flex-1 overflow-y-auto px-4 py-3.5 space-y-3.5 custom-scrollbar">
@@ -736,8 +811,8 @@ try {
                 <div
                   className={`rounded-2xl px-4 py-3 shadow-xs ${
                     isUser
-                      ? "bg-[#2E7D73] text-white rounded-tr-xs"
-                      : "bg-white border border-[#D9F4F1] text-[#2C3E50] rounded-tl-xs shadow-sm"
+                      ? "ms-message--user ms-glass ms-glass--green text-white rounded-tr-xs"
+                      : "ms-message--assistant ms-glass ms-glass--purple text-slate-800 rounded-tl-xs shadow-sm"
                   }`}
                 >
                   <p className="text-[15px] leading-relaxed font-normal whitespace-pre-wrap select-text">
@@ -768,7 +843,7 @@ try {
                         onClick={() => speakMessage(msg.id, msg.text)}
                         className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold transition-all ${
                           isPlaying
-                            ? "bg-rose-100 text-rose-700 animate-pulse"
+                            ? "bg-emerald-100 text-emerald-800"
                             : "hover:bg-slate-100 text-[#2E7D73]"
                         }`}
                         title={isPlaying ? currentLangConfig.stopBtn : currentLangConfig.speakBtn}
@@ -799,10 +874,10 @@ try {
             <div className="w-7 h-7 rounded-full bg-[#D9F4F1] flex items-center justify-center text-[#2E7D73]">
               <Brain className="w-4 h-4 animate-spin-slow" />
             </div>
-            <div className="bg-white border border-[#D9F4F1] rounded-2xl px-3.5 py-2.5 rounded-tl-xs flex items-center gap-1.5 shadow-xs">
-              <span className="w-2 h-2 rounded-full bg-[#2E7D73] animate-bounce" style={{ animationDelay: "0ms" }} />
-              <span className="w-2 h-2 rounded-full bg-[#2E7D73] animate-bounce" style={{ animationDelay: "150ms" }} />
-              <span className="w-2 h-2 rounded-full bg-[#2E7D73] animate-bounce" style={{ animationDelay: "300ms" }} />
+            <div className="ms-glass ms-glass--blue border border-[#D9F4F1] rounded-2xl px-3.5 py-2.5 rounded-tl-xs flex items-center gap-1.5 shadow-xs">
+              <span className="ms-typing-dot w-2 h-2 rounded-full bg-sky-500 animate-bounce" style={{ animationDelay: "0ms" }} />
+              <span className="ms-typing-dot w-2 h-2 rounded-full bg-sky-500 animate-bounce" style={{ animationDelay: "150ms" }} />
+              <span className="ms-typing-dot w-2 h-2 rounded-full bg-sky-500 animate-bounce" style={{ animationDelay: "300ms" }} />
               <span className="text-xs font-semibold text-[#2E7D73] ml-1.5">{currentLangConfig.processing}</span>
             </div>
           </div>
@@ -834,7 +909,7 @@ try {
             key={i}
             onClick={() => sendMessage(sugg.prompt)}
             disabled={isProcessing || isListening}
-            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-white hover:bg-[#D9F4F1] text-[#2E7D73] text-xs font-bold border border-[#D9F4F1] shadow-xs active:scale-95 transition-all flex-shrink-0 disabled:opacity-50"
+            className={`ms-quick-action ms-glass ${i % 2 === 0 ? "ms-glass--purple" : "ms-glass--peach"} inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-[#2E7D73] text-xs font-bold border border-[#D9F4F1] shadow-xs active:scale-95 flex-shrink-0 disabled:opacity-50`}
           >
             {sugg.label}
           </button>
@@ -844,11 +919,11 @@ try {
       {/* ─── ACTIVE LISTENING OVERLAY CARD ─── */}
       {isListening && (
         <div className="px-4 pb-2">
-          <div className="bg-gradient-to-r from-teal-50 to-emerald-50 border-2 border-[#2E7D73] rounded-2xl p-3.5 flex items-center justify-between shadow-md animate-fade-in">
+          <div className="ms-glass ms-glass--blue border-2 border-sky-200 rounded-2xl p-3.5 flex items-center justify-between shadow-sm animate-fade-in">
             <div className="flex items-center gap-3">
               <div className="relative flex items-center justify-center">
-                <span className="w-3.5 h-3.5 rounded-full bg-rose-500 animate-ping absolute" />
-                <span className="w-3.5 h-3.5 rounded-full bg-rose-500 relative" />
+                <span className="w-3.5 h-3.5 rounded-full bg-emerald-500 animate-ping absolute" />
+                <span className="w-3.5 h-3.5 rounded-full bg-emerald-600 relative" />
               </div>
               <div>
                 <p className="text-sm font-extrabold text-[#2E7D73]">
@@ -866,7 +941,7 @@ try {
 
             <button
               onClick={cancelListening}
-              className="px-3 py-1.5 rounded-xl bg-rose-100 hover:bg-rose-200 text-rose-700 text-xs font-bold active:scale-95 transition-all"
+              className="min-h-10 px-3 py-2 rounded-xl bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 text-xs font-bold active:scale-95 transition-all"
             >
               Cancel
             </button>
@@ -875,7 +950,7 @@ try {
       )}
 
       {/* ─── BOTTOM INPUT BAR: PROMINENT MIC & TEXT INPUT ─── */}
-      <div className="bg-white border-t border-slate-200 px-3 py-2.5 shadow-lg z-20">
+      <div className="ms-input-bar ms-glass ms-glass--blue bg-white/90 border-t border-slate-200 px-3 py-2.5 shadow-lg z-20">
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -890,8 +965,8 @@ try {
             disabled={isProcessing}
             className={`w-13 h-13 rounded-full flex items-center justify-center flex-shrink-0 transition-all shadow-md active:scale-95 ${
               isListening
-                ? "bg-rose-500 text-white scale-105 ring-4 ring-rose-200 animate-pulse"
-                : "bg-[#2E7D73] hover:bg-[#25665E] text-white"
+                ? "bg-emerald-700 text-white scale-105 ring-4 ring-emerald-200"
+                : "bg-violet-600 hover:bg-violet-700 text-white"
             } disabled:opacity-50`}
             aria-label={isListening ? "Stop listening" : "Tap to Speak"}
             title="Tap to speak"
@@ -918,7 +993,7 @@ try {
             <button
               type="submit"
               disabled={!inputValue.trim() || isListening || isProcessing}
-              className="absolute right-1.5 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-[#2E7D73] disabled:bg-slate-200 text-white flex items-center justify-center transition-all active:scale-95 disabled:cursor-not-allowed"
+              className="absolute right-1 top-1/2 -translate-y-1/2 w-11 h-11 rounded-full bg-[#2E7D73] disabled:bg-slate-200 text-white flex items-center justify-center transition-all active:scale-95 disabled:cursor-not-allowed"
               aria-label="Send message"
             >
               <Send className="w-4 h-4" />
