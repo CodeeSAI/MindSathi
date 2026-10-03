@@ -84,9 +84,9 @@ export const AlertsSafetyView: React.FC<AlertsSafetyViewProps> = ({
         <button
           onClick={onTriggerSos}
           id="sos-main-trigger-btn"
-          className="w-full py-3.5 px-4 rounded-xl bg-white hover:bg-rose-50 text-rose-700 text-sm font-black tracking-wider shadow-lg flex items-center justify-center gap-2 transition-transform active:scale-98"
+          className="w-full py-3.5 px-4 rounded-xl bg-white hover:bg-rose-50 text-rose-700 text-sm font-black tracking-wider shadow-lg flex items-center justify-center gap-2.5 transition-transform active:scale-[0.98]"
         >
-          <AlertTriangle className="w-5 h-5 text-rose-600 animate-bounce" />
+          <AlertTriangle className="w-5 h-5 text-rose-600" />
           <span>TRIGGER EMERGENCY SOS</span>
         </button>
       </div>
@@ -113,7 +113,7 @@ export const AlertsSafetyView: React.FC<AlertsSafetyViewProps> = ({
       </div>
 
       {/* 3. Safety Alerts Feed */}
-      <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-xs">
+      <div className="ms-glass ms-glass--blue bg-white rounded-2xl p-4 border border-slate-200 shadow-xs">
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
             <BellRing className="w-4 h-4 text-emerald-600" />
@@ -150,7 +150,7 @@ export const AlertsSafetyView: React.FC<AlertsSafetyViewProps> = ({
                     {alert.description}
                   </p>
                   {alert.location && (
-                    <div className="flex items-center gap-1 text-[11px] text-slate-500 font-medium mb-2">
+                    <div className="flex items-center gap-1 text-xs text-slate-500 font-medium mb-2">
                       <MapPin className="w-3 h-3 text-slate-400" />
                       <span>{alert.location}</span>
                     </div>
@@ -179,7 +179,7 @@ export const AlertsSafetyView: React.FC<AlertsSafetyViewProps> = ({
       </div>
 
       {/* 4. Emergency Contact Cards */}
-      <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-xs">
+      <div className="ms-glass ms-glass--purple bg-white rounded-2xl p-4 border border-slate-200 shadow-xs">
         <h3 className="text-sm font-bold text-slate-900 mb-3 flex items-center gap-1.5">
           <UserCheck className="w-4 h-4 text-emerald-600" />
           <span>Emergency Contacts Directory</span>
@@ -189,7 +189,7 @@ export const AlertsSafetyView: React.FC<AlertsSafetyViewProps> = ({
           {patient.emergencyContacts.map((contact, i) => (
             <div
               key={i}
-              className={`p-3 rounded-xl border flex items-center justify-between gap-2 ${
+              className={`ms-card-lift p-3.5 rounded-xl border flex items-center justify-between gap-2 transition-all ${
                 contact.isPrimary ? 'bg-emerald-50/40 border-emerald-300' : 'bg-slate-50 border-slate-200'
               }`}
             >
@@ -202,8 +202,8 @@ export const AlertsSafetyView: React.FC<AlertsSafetyViewProps> = ({
                     </span>
                   )}
                 </div>
-                <p className="text-[11px] text-slate-500">{contact.relationship}</p>
-                <p className="text-xs font-semibold text-slate-700">{contact.phone}</p>
+                <p className="text-xs text-slate-500 mt-0.5">{contact.relationship}</p>
+                <p className="text-xs font-semibold text-slate-700 mt-0.5">{contact.phone}</p>
               </div>
               <button
                 onClick={() => showToast(`📞 Calling ${contact.name} (${contact.phone})...`)}

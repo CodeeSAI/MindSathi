@@ -1,5 +1,548 @@
 @import "tailwindcss";
 
+@theme {
+  --color-ms-cream: #FFFDF1;
+  --color-ms-green: #2F7D32;
+  --color-ms-ink: #182019;
+  --color-slate-50: #FFFDF1;
+  --color-slate-100: #FFF8EA;
+  --color-slate-200: #F7F3E8;
+  --color-slate-300: #E6E1D1;
+  --color-slate-400: #8A867B;
+  --color-slate-500: #667066;
+  --color-slate-600: #4F5A50;
+  --color-slate-700: #34342F;
+  --color-slate-800: #242620;
+  --color-slate-900: #182019;
+  --color-emerald-50: #F0F9EC;
+  --color-emerald-100: #E3F4DC;
+  --color-emerald-200: #C9E9BD;
+  --color-emerald-300: #A8DA95;
+  --color-emerald-400: #78B96B;
+  --color-emerald-500: #4CAF50;
+  --color-emerald-600: #2F7D32;
+  --color-emerald-700: #266929;
+  --color-emerald-800: #1F5422;
+  --color-emerald-900: #18421A;
+  --color-teal-50: #F0F8EF;
+  --color-teal-100: #E3F1DF;
+  --color-teal-600: #2F7D32;
+  --color-teal-700: #266929;
+  --color-teal-800: #1F5422;
+  --color-sky-50: #F3FAFF;
+  --color-sky-100: #E6F2FF;
+  --color-sky-200: #C5E6FA;
+  --color-sky-500: #6EA8D9;
+  --color-sky-700: #3179A8;
+  --color-violet-50: #F7F4FF;
+  --color-violet-100: #EEE9FF;
+  --color-violet-200: #DFD7FF;
+  --color-violet-400: #9B8AFB;
+  --color-violet-700: #6956B6;
+  --color-amber-50: #FFFAEA;
+  --color-amber-100: #FFF0C7;
+  --color-amber-200: #F9E2A3;
+  --color-amber-500: #F4B942;
+  --color-amber-700: #94650D;
+  --color-orange-50: #FFF4EE;
+  --color-orange-100: #FFECE5;
+  --color-orange-400: #FF927D;
+  --color-orange-700: #A84E31;
+  --color-pink-50: #FFF4F8;
+  --color-pink-100: #FFECE5;
+  --color-pink-400: #F6B39F;
+  --color-pink-700: #A84E31;
+  --color-rose-500: #F47C6C;
+  --color-rose-100: #FFE3DC;
+  --radius-xl: 0.9rem;
+  --radius-2xl: 1rem;
+  --radius-3xl: 1.35rem;
+  --shadow-xs: 0 1px 2px rgb(24 32 25 / 6%);
+  --shadow-sm: 0 2px 8px rgb(24 32 25 / 7%);
+  --shadow-md: 0 8px 24px rgb(24 32 25 / 9%);
+}
+
+:root {
+  color-scheme: light;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  background: #FFFDF1;
+  color: #182019;
+  /* Global typography baseline */
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  background: #FFFDF1;
+  color: #182019;
+}
+
+button,
+a,
+input,
+select,
+textarea {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 3px solid #2F7D32;
+  outline-offset: 3px;
+}
+
+.ms-app-shell {
+  min-width: 0;
+  background-color: #FFFDF1;
+  background-image:
+    radial-gradient(ellipse at 0% 0%, rgba(76, 175, 80, 0.05), transparent 42%),
+    radial-gradient(ellipse at 100% 12%, rgba(244, 124, 108, 0.04), transparent 45%),
+    radial-gradient(ellipse at 50% 100%, rgba(155, 138, 251, 0.035), transparent 48%);
+  background-attachment: fixed;
+  color: #182019;
+}
+
+.ms-glass {
+  --ms-glass-tint: rgb(255 255 255 / 12%);
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  background: linear-gradient(145deg, rgb(255 255 255 / 82%), var(--ms-glass-tint));
+  -webkit-backdrop-filter: blur(16px) saturate(125%);
+  backdrop-filter: blur(16px) saturate(125%);
+  border: 1px solid rgb(255 255 255 / 82%);
+  box-shadow: 0 8px 24px rgb(24 32 25 / 7%), inset 0 1px 0 rgb(255 255 255 / 88%);
+}
+
+.ms-glass::before {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  content: "";
+  pointer-events: none;
+  background: linear-gradient(135deg, rgb(255 255 255 / 24%), transparent 40%);
+  opacity: .75;
+  z-index: -1;
+}
+
+.ms-glass::after {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  content: "";
+  pointer-events: none;
+  background: linear-gradient(112deg, transparent 30%, rgb(255 255 255 / 16%) 48%, transparent 66%);
+  background-size: 220% 100%;
+  background-position: 120% 0;
+  opacity: 0;
+  z-index: 2;
+}
+
+.ms-glass--green { --ms-glass-tint: rgb(76 175 80 / 7%); }
+.ms-glass--blue { --ms-glass-tint: rgb(110 168 217 / 8%); }
+.ms-glass--purple { --ms-glass-tint: rgb(155 138 251 / 8%); }
+.ms-glass--peach { --ms-glass-tint: rgb(246 179 159 / 9%); }
+.ms-glass--amber { --ms-glass-tint: rgb(244 185 66 / 9%); }
+.ms-glass--pink { --ms-glass-tint: rgb(244 124 108 / 7%); }
+
+/* Subtle light sweep on hover/focus - no continuous animation */
+.ms-glass:hover::after,
+.ms-glass:focus-visible::after {
+  opacity: .15;
+  animation: ms-glass-sweep 850ms ease-out both;
+}
+
+/* Only lift interactive glass elements (buttons/anchors), not every div */
+a.ms-glass:hover,
+button.ms-glass:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 26px rgb(24 32 25 / 10%), inset 0 1px 0 rgb(255 255 255 / 92%);
+}
+
+.ms-glass:active { transform: scale(.99); }
+
+.ms-glass button:active { transform: scale(.98); }
+
+/* Utility: smooth card lift for clickable div wrappers */
+.ms-card-lift {
+  transition: transform 180ms ease, box-shadow 180ms ease;
+}
+.ms-card-lift:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 24px rgb(24 32 25 / 9%);
+}
+.ms-card-lift:active { transform: scale(.98); }
+
+/* High-contrast solid primary action button for patient journey */
+.ms-btn-journey {
+  background: linear-gradient(135deg, #2F7D32, #245F2B) !important;
+  color: #FFFFFF !important;
+  border: 1px solid rgba(255, 255, 255, 0.28) !important;
+  box-shadow: 0 4px 14px rgba(47, 125, 50, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.25) !important;
+  transition: transform 160ms ease, box-shadow 160ms ease, filter 160ms ease !important;
+}
+.ms-btn-journey:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(47, 125, 50, 0.42), inset 0 1px 0 rgba(255, 255, 255, 0.35) !important;
+  filter: brightness(1.06);
+}
+.ms-btn-journey:active {
+  transform: scale(0.98);
+}
+
+@keyframes ms-glass-sweep {
+  from { background-position: 120% 0; }
+  to { background-position: -120% 0; }
+}
+
+@keyframes ms-glass-drift {
+  0%, 68%, 100% { background-position: 120% 0; opacity: .04; }
+  82% { background-position: -120% 0; opacity: .14; }
+}
+
+@keyframes ms-score-enter {
+  from { opacity: 0; transform: translateY(5px) scale(.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.ms-score-enter { animation: ms-score-enter 420ms ease-out both; }
+
+.ms-game-card {
+  transition: transform 180ms ease, box-shadow 180ms ease;
+}
+
+.ms-game-card:hover,
+.ms-game-card:focus-visible { transform: translateY(-2px); box-shadow: 0 10px 24px rgb(37 43 33 / 9%); }
+
+.ms-game-card:active { transform: scale(.98); }
+
+.ms-patient-header {
+  background-image:
+    radial-gradient(ellipse at 92% 10%, rgba(246, 179, 159, 0.28), transparent 48%),
+    radial-gradient(ellipse at 8% 0%, rgba(255, 255, 255, 0.16), transparent 40%),
+    linear-gradient(135deg, #235A29 0%, #2F7D32 50%, #347242 80%, #3F754D 100%) !important;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 20%), 0 10px 24px rgb(24 40 24 / 12%);
+}
+
+.ms-patient-header--profile {
+  background-image:
+    radial-gradient(ellipse at 85% 15%, rgba(246, 179, 159, 0.22), transparent 45%),
+    radial-gradient(ellipse at 15% 10%, rgba(240, 238, 249, 0.2), transparent 42%),
+    linear-gradient(135deg, #27622E 0%, #2F7D32 55%, #3C7A45 100%) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22), 0 8px 20px rgba(24, 40, 24, 0.1);
+}
+
+.ms-map-canvas {
+  background-color: #FAF8F2;
+  background-image: radial-gradient(#E5DFD3 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
+.ms-stat-panel {
+  min-width: 0;
+  min-height: 3.75rem;
+  padding: .55rem .65rem;
+  gap: .5rem;
+  color: #182019;
+  align-items: center;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-radius: 1rem;
+  transition: transform 160ms ease;
+}
+
+.ms-stat-panel:hover {
+  transform: translateY(-1px);
+}
+
+.ms-stat-panel--stars {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.94), rgba(255, 248, 225, 0.88));
+  border: 1px solid rgba(244, 185, 66, 0.5);
+  box-shadow: 0 4px 14px rgba(244, 185, 66, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+.ms-stat-panel--streak {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.94), rgba(255, 235, 230, 0.88));
+  border: 1px solid rgba(244, 124, 108, 0.5);
+  box-shadow: 0 4px 14px rgba(244, 124, 108, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+.ms-stat-panel--badges {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.94), rgba(243, 240, 255, 0.88));
+  border: 1px solid rgba(155, 138, 251, 0.5);
+  box-shadow: 0 4px 14px rgba(155, 138, 251, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+.ms-stat-icon {
+  display: grid;
+  width: 2.25rem;
+  height: 2.25rem;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 999px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.85);
+}
+
+.ms-stat-icon--stars {
+  background: #FFF0C7;
+  border: 1px solid rgba(244, 185, 66, 0.4);
+}
+
+.ms-stat-icon--streak {
+  background: #FFE3DC;
+  border: 1px solid rgba(244, 124, 108, 0.4);
+}
+
+.ms-stat-icon--badges {
+  background: #EEE9FF;
+  border: 1px solid rgba(155, 138, 251, 0.4);
+}
+
+.ms-sahara-header {
+  background-image:
+    radial-gradient(ellipse at 95% 0%, rgb(155 138 251 / 25%), transparent 42%),
+    linear-gradient(125deg, #2F7D32, #255E47 56%, #4F5E97) !important;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 18%), 0 8px 20px rgb(31 73 44 / 16%);
+}
+
+.ms-sahara-orb {
+  background: linear-gradient(145deg, rgb(238 233 255 / 83%), rgb(232 245 233 / 65%));
+  border-color: rgb(255 255 255 / 72%);
+  box-shadow: 0 0 0 4px rgb(155 138 251 / 10%), 0 6px 16px rgb(31 73 44 / 15%);
+  animation: ms-orb-breathe 5s ease-in-out infinite;
+}
+
+.ms-sahara .ms-message--user {
+  background: linear-gradient(145deg, #438D3A, #2F7D32);
+  color: #FFFFFF;
+  border-color: rgb(255 255 255 / 30%);
+}
+
+.ms-sahara .ms-message--assistant {
+  background: linear-gradient(145deg, rgb(255 255 255 / 91%), rgb(238 233 255 / 47%));
+  border-color: rgb(155 138 251 / 18%);
+}
+
+.ms-sahara .ms-message--assistant button { min-height: 2.25rem; }
+
+.ms-sahara .ms-quick-action {
+  min-height: 2.65rem;
+  transition: transform 180ms ease, box-shadow 180ms ease;
+}
+
+.ms-sahara .ms-quick-action:hover { transform: translateY(-2px); }
+.ms-sahara .ms-input-bar { border-radius: 1.25rem 1.25rem 0 0; }
+.ms-sahara .ms-typing-dot { animation-duration: 1.2s; }
+
+@keyframes ms-orb-breathe {
+  0%, 100% { transform: scale(1); box-shadow: 0 0 0 4px rgb(155 138 251 / 9%), 0 6px 16px rgb(31 73 44 / 15%); }
+  50% { transform: scale(1.035); box-shadow: 0 0 0 7px rgb(155 138 251 / 13%), 0 8px 18px rgb(31 73 44 / 17%); }
+}
+
+.ms-caregiver-shell .ms-glass,
+.ms-patient-shell .ms-glass { border-color: rgb(255 255 255 / 78%); }
+
+.ms-caregiver-home > .bg-white[class*="rounded-2xl"]:not(.ms-glass),
+.ms-caregiver-home > .bg-white[class*="rounded-3xl"]:not(.ms-glass) {
+  background: linear-gradient(150deg, rgb(255 255 255 / 79%), rgb(255 253 241 / 69%));
+  -webkit-backdrop-filter: blur(15px) saturate(125%);
+  backdrop-filter: blur(15px) saturate(125%);
+  border-color: rgb(255 255 255 / 84%);
+  box-shadow: 0 8px 22px rgb(37 43 33 / 7%), inset 0 1px 0 rgb(255 255 255 / 88%);
+}
+
+.ms-caregiver-home > .bg-white[class*="rounded-2xl"]:not(.ms-glass):hover,
+.ms-caregiver-home > .bg-white[class*="rounded-3xl"]:not(.ms-glass):hover {
+  box-shadow: 0 11px 26px rgb(37 43 33 / 9%), inset 0 1px 0 rgb(255 255 255 / 92%);
+}
+
+.ms-bottom-nav {
+  -webkit-backdrop-filter: blur(18px) saturate(130%);
+  backdrop-filter: blur(18px) saturate(130%);
+  background: rgba(255, 253, 241, 0.92);
+  border-top: 1px solid rgba(212, 232, 203, 0.6);
+  box-shadow: 0 -6px 24px rgb(24 32 25 / 6%), inset 0 1px 0 rgb(255 255 255 / 85%);
+}
+
+.ms-bottom-nav button {
+  min-width: 2.75rem;
+  min-height: 3.25rem;
+  border-radius: 999px;
+  transition: transform 180ms ease, background-color 180ms ease;
+}
+
+.ms-bottom-nav button:active { transform: scale(.96); }
+
+.ms-nav-active-pill {
+  border-radius: 999px;
+  background: rgba(47, 125, 50, 0.12);
+  box-shadow: inset 0 0 0 1px rgba(47, 125, 50, 0.25);
+  color: #2F7D32;
+}
+
+.ms-caregiver-shell {
+  min-height: 100dvh;
+}
+
+.ms-patient-device {
+  width: min(390px, 100vw);
+  height: min(844px, 100dvh);
+  min-height: 0;
+  background-color: #FFFDF1;
+  background-image:
+    radial-gradient(ellipse at 0% 0%, rgba(76, 175, 80, 0.06), transparent 42%),
+    radial-gradient(ellipse at 100% 10%, rgba(244, 124, 108, 0.05), transparent 42%),
+    radial-gradient(ellipse at 50% 100%, rgba(155, 138, 251, 0.04), transparent 45%);
+}
+
+.ms-mobile-frame {
+  height: min(860px, calc(100dvh - 9rem));
+  min-height: 0;
+}
+
+.ms-patient-shell [class~="bg-[#F8FAFB]"] {
+  background-color: #FFFDF1 !important;
+}
+
+.ms-patient-shell .bg-white[class*="rounded-2xl"][class*="border"]:not(.ms-glass),
+.ms-patient-shell .bg-white[class*="rounded-3xl"][class*="border"]:not(.ms-glass) {
+  background: linear-gradient(145deg, rgb(255 255 255 / 88%), rgb(255 253 241 / 80%));
+  -webkit-backdrop-filter: blur(13px) saturate(122%);
+  backdrop-filter: blur(13px) saturate(122%);
+  border-color: rgba(230, 225, 209, 0.8);
+  box-shadow: 0 7px 20px rgb(24  32 25 / 6%), inset 0 1px 0 rgb(255 255 255 / 85%);
+}
+
+.ms-patient-shell [class~="bg-[#D9F4F1]"],
+.ms-patient-shell [class~="bg-[#E6F4F1]"],
+.ms-patient-shell [class~="bg-[#EAF5EE]"],
+.ms-patient-shell [class~="bg-[#E8F5E9]"],
+.ms-patient-shell [class~="bg-[#F0FDF4]"] {
+  background-color: #EAF5E4 !important;
+}
+
+.ms-patient-shell [class~="border-[#D9F4F1]"] {
+  border-color: #D4E8CB !important;
+}
+
+.ms-patient-shell [class~="text-[#37474F]"] {
+  color: #182019 !important;
+}
+
+.ms-patient-shell [class~="text-[#78909C]"],
+.ms-patient-shell [class~="text-[#607D8B]"],
+.ms-patient-shell [class~="text-[#90A4AE]"] {
+  color: #4F5A50 !important;
+}
+
+.ms-patient-shell [class~="bg-[#2E7D73]"] {
+  background-color: #2F7D32 !important;
+}
+
+.ms-patient-shell [class~="text-[#2E7D73]"],
+.ms-patient-shell [class~="text-[#43A047]"] {
+  color: #2F7D32 !important;
+}
+
+.ms-patient-shell [class~="bg-[#43A047]"] {
+  background-color: #2F7D32 !important;
+}
+
+.ms-patient-shell [class~="text-[#D9F4F1]"],
+.ms-patient-shell [class~="text-[#A8DADB]"] {
+  color: #EAF5E8 !important;
+}
+
+.ms-patient-shell [class~="bg-[#D9F4F1]"] {
+  background-color: #EAF5E4 !important;
+}
+
+.ms-patient-shell [class~="bg-[#2E7D73]"] {
+  color: #FFFFFF;
+}
+
+.ms-patient-shell button,
+.ms-app-shell button {
+  transition-duration: 160ms;
+}
+
+@media (max-width: 430px) {
+  .ms-patient-device {
+    width: 100vw;
+    height: 100dvh;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .ms-mobile-frame {
+    width: 100%;
+    max-width: none;
+    height: calc(100dvh - 9rem);
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    background: #FFFDF1;
+  }
+
+  .ms-mobile-screen {
+    border: 0;
+    border-radius: 0;
+  }
+
+  .ms-mobile-notch {
+    display: none;
+  }
+}
+
+@media (max-width: 360px) {
+  .ms-patient-shell .ms-stat-panel { padding-inline: .48rem; gap: .3rem; }
+  .ms-patient-shell .ms-stat-panel > span:first-child { font-size: 1.25rem; }
+  .ms-patient-shell .ms-patient-content { padding-inline: 1rem; }
+  .ms-patient-shell .ms-stat-icon { width: 2.1rem; height: 2.1rem; }
+}
+
+@media (max-width: 320px) {
+  .ms-patient-shell .ms-stat-panel { padding-inline: .35rem; gap: .2rem; font-size: 0.8rem; }
+  .ms-patient-shell .ms-stat-icon { width: 1.85rem; height: 1.85rem; font-size: 1rem; }
+  /* Prevent modal overflow on very small screens */
+  .ms-modal-safe {
+    max-width: calc(100vw - 16px) !important;
+    padding: 1rem !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ms-app-shell *,
+  .ms-app-shell *::before,
+  .ms-app-shell *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+  .ms-glass--featured::after { animation: none; opacity: 0; }
+  .ms-score-enter { animation: none; }
+  .ms-card-lift { transition: none; }
+  .ms-card-lift:hover { transform: none; box-shadow: none; }
+  .ms-sahara-orb { animation: none; }
+}
+
 @layer utilities {
   .custom-scrollbar::-webkit-scrollbar {
     width: 5px;

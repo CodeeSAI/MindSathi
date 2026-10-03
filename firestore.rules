@@ -1,0 +1,93 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isPatient(patientId) {
+      return signedIn() && request.auth.uid == patientId;
+    }
+
+    function isLinkedCaregiver(patientId) {
+      return signedIn()
+        && get(/databases/$(database)/documents/users/$(patientId)).data.role == "patient"
+        && get(/databases/$(database)/documents/users/$(patientId)).data.caretakerId == request.auth.uid;
+    }
+
+    function validActiveSos(data, expectedTrigger) {
+      return data.keys().hasAll([
+          "type",
+          "title",
+          "description",
+          "severity",
+          "status",
+          "isResolved",
+          "triggeredBy",
+          "createdAt",
+          "resolvedAt",
+          "resolvedBy"
+        ])
+        && data.keys().hasOnly([
+          "type",
+          "title",
+          "description",
+          "severity",
+          "status",
+          "isResolved",
+          "triggeredBy",
+          "createdAt",
+          "resolvedAt",
+          "resolvedBy"
+        ])
+        && data.type == "SOS"
+        && data.title == "Emergency SOS"
+        && data.description is string
+        && data.severity == "critical"
+        && data.status == "active"
+        && data.isResolved == false
+        && data.triggeredBy == expectedTrigger
+        && data.createdAt == request.time
+        && data.resolvedAt == null
+        && data.resolvedBy == null;
+    }
+
+    function validCaregiverResolution() {
+      return resource.data.type == "SOS"
+        && resource.data.status == "active"
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          "status",
+          "isResolved",
+          "resolvedAt",
+          "resolvedBy"
+        ])
+        && request.resource.data.status == "resolved"
+        && request.resource.data.isResolved == true
+        && request.resource.data.resolvedAt == request.time
+        && request.resource.data.resolvedBy == request.auth.uid;
+    }
+
+    // Additive SOS rules only. Merge this match into the existing Firebase
+    // Console rules; do not publish this fragment as a replacement for the
+    // project's complete rules, because other application paths are omitted.
+    match /patients/{patientId}/safetyAlerts/{alertId} {
+      allow read: if signedIn()
+        && (isPatient(patientId)
+          || (alertId == "active_sos" && isLinkedCaregiver(patientId)));
+
+      allow create: if alertId == "active_sos"
+        && ((isPatient(patientId) && validActiveSos(request.resource.data, "patient"))
+          || (isLinkedCaregiver(patientId) && validActiveSos(request.resource.data, "caregiver")));
+
+      allow update: if alertId == "active_sos"
+        && ((isPatient(patientId)
+            && resource.data.status == "resolved"
+            && validActiveSos(request.resource.data, "patient"))
+          || (isLinkedCaregiver(patientId)
+            && ((resource.data.status == "resolved"
+                && validActiveSos(request.resource.data, "caregiver"))
+              || validCaregiverResolution())));
+    }
+  }
+}

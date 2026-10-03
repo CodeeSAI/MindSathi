@@ -1,7 +1,9 @@
 import React, { useEffect, useMemo, useState } from "react";
+import type { CognitiveAIReport } from "./services/aiCognitiveReport";
+import { ACTIVE_SOS_ALERT_ID, createOrActivateSosAlert, resolveSosAlert } from "./services/safetyAlertService";
 import {
-  generateCognitiveAIReport,
-  CognitiveAIReport,
+  calculateCognitiveOverallScore,
+  normalizeCognitiveGameResult,
 } from "./services/aiCognitiveReport";
 import {
   collection,
@@ -79,7 +81,8 @@ export function App() {
  const [reminders, setReminders] = useState<ReminderItem[]>([]);
 
   const [alerts, setAlerts] =
-    useState<AlertItem[]>(INITIAL_ALERTS);
+    useState<AlertItem[]>(INITIAL_ALERTS.filter((alert) => alert.type !== "SOS"));
+  const [assignedPatientId, setAssignedPatientId] = useState<string | null>(null);
 
   const [cognitiveProgress, setCognitiveProgress] =
     useState<CognitiveProgress>(INITIAL_COGNITIVE_PROGRESS);
@@ -101,6 +104,8 @@ export function App() {
   useEffect(() => {
   let unsubscribeGames: (() => void) | undefined;
   let unsubscribeReminders: (() => void) | undefined;
+  let unsubscribePatientReport: (() => void) | undefined;
+  let unsubscribeSafetyAlert: (() => void) | undefined;
 
   const loadAssignedPatient = async () => {
     const caretaker = auth.currentUser;
@@ -130,6 +135,7 @@ export function App() {
       const patientDoc = snapshot.docs[0];
       const patientData = patientDoc.data();
       const patientId = patientDoc.id;
+      setAssignedPatientId(patientId);
 
       console.log("Linked patient:", patientId, patientData);
 
@@ -138,6 +144,58 @@ export function App() {
         ...INITIAL_PATIENT,
         fullName: patientData.name || "Ravi Kumar",
       });
+
+      unsubscribePatientReport = onSnapshot(
+        q,
+        (assignedPatientsSnapshot) => {
+          const assignedPatient = assignedPatientsSnapshot.docs[0];
+          setAiReport(
+            assignedPatient?.data().cognitiveReport ?? null
+          );
+        },
+        (error) => {
+          console.error("Assigned patient report listener failed:", error);
+        }
+      );
+
+      unsubscribeSafetyAlert = onSnapshot(
+        doc(db, "patients", patientId, "safetyAlerts", ACTIVE_SOS_ALERT_ID),
+        (safetySnapshot) => {
+          if (!safetySnapshot.exists() || safetySnapshot.data().type !== "SOS") {
+            setAlerts((previous) => previous.filter((alert) => alert.id !== ACTIVE_SOS_ALERT_ID));
+            return;
+          }
+
+          const safetyData = safetySnapshot.data();
+          const createdAt = safetyData.createdAt?.toDate?.();
+          const safetyAlert: AlertItem = {
+            id: safetySnapshot.id,
+            title: "Emergency SOS",
+            description: "An SOS safety alert was requested for this patient.",
+            type: "SOS",
+            severity: "critical",
+            timestamp: createdAt instanceof Date ? createdAt.toLocaleString() : "Just now",
+            isResolved: safetyData.status === "resolved",
+            ...(typeof safetyData.location === "string" && safetyData.location.trim()
+              ? { location: safetyData.location.trim() }
+              : {}),
+          };
+
+          setAlerts((previous) => [
+            safetyAlert,
+            ...previous.filter((alert) => alert.id !== ACTIVE_SOS_ALERT_ID),
+          ]);
+          setPatient((previous) => ({
+            ...previous,
+            status: safetyData.status === "active"
+              ? "Emergency"
+              : previous.status === "Emergency"
+              ? "Safe"
+              : previous.status,
+          }));
+        },
+        (error) => console.error("Patient SOS listener failed:", error)
+      );
 
       // =========================================================
       // REAL-TIME REMINDER SYNC
@@ -235,134 +293,11 @@ export function App() {
   })
   .map((docSnap) => {
     const data = docSnap.data();
-
-    // All cognitive games now store their performance on a 0–100 scale.
-    let score = 0;
-
-if (data.normalizedScore !== undefined) {
-  // New adaptive-game records
-  score = Number(data.normalizedScore);
-} else if (data.maxScore) {
-  // Older records that stored score + maxScore
-  score =
-    (Number(data.score || 0) /
-      Number(data.maxScore)) *
-    100;
-} else if (data.gameName === "Memory Match") {
-  // Old Memory Match records were scored out of 20
-  score =
-    (Number(data.score || 0) / 20) * 100;
-} else {
-  // Older cognitive games were scored out of 5
-  score =
-    (Number(data.score || 0) / 5) * 100;
-}
-
-score = Math.max(
-  0,
-  Math.min(100, Math.round(score))
-);
-
-    const gameName = String(
-      data.gameName ||
-      data.gameType ||
-      "Cognitive Game"
-    );
-
-    const domainMap: Record<string, string> = {
-      "Memory Match": "Memory",
-      "Focus Finder": "Attention",
-      "Daily Life Recall": "Routine Recall",
-      "Pattern Path": "Pattern Recognition",
-      "Familiar Place": "Memory",
-      "Picture Recall": "Memory",
-    };
-
-    return {
-      id: docSnap.id,
-      gameName,
-
-      playedTime:
-        data.completedAt?.toDate?.()
-          ? data.completedAt.toDate().toLocaleString()
-          : "Recently",
-
-      score,
-      maxScore: 100,
-
-      duration:
-        data.completionTimeSeconds
-          ? `${Math.round(data.completionTimeSeconds)}s`
-          : data.durationSeconds
-          ? `${data.durationSeconds}s`
-          : "Completed",
-
-      difficulty:
-        data.difficultyLevel
-          ? `Level ${data.difficultyLevel}`
-          : "Adaptive",
-
-      cognitiveDomain:
-        data.cognitiveDomain ||
-        domainMap[gameName] ||
-        "Cognitive",
-    };
+    return normalizeCognitiveGameResult(docSnap.id, data);
   });
 
-  // =========================================================
-// LATEST RESULT OF EACH GAME FOR AI ANALYSIS
-// gameHistory is already newest → oldest
-// =========================================================
-const latestByGame = new Map<
-  string,
-  (typeof gameHistory)[number]
->();
-
-gameHistory.forEach((game) => {
-  if (!latestByGame.has(game.gameName)) {
-    latestByGame.set(game.gameName, game);
-  }
-});
-
-const latestGameHistory = Array.from(
-  latestByGame.values()
-);
   // Overall score is the average of each game's 0–100 performance.
-  const overallScore =
-    gameHistory.length > 0
-      ? Math.max(
-          0,
-          Math.min(
-            100,
-            Math.round(
-              gameHistory.reduce(
-                (total, game) =>
-                  total + Number(game.score || 0),
-                0
-              ) / gameHistory.length
-            )
-          )
-        )
-      : 0;
-
-  // =========================================================
-  // GEMINI AI COGNITIVE REPORT
-  // =========================================================
-  generateCognitiveAIReport(gameHistory)
-    .then((report) => {
-      setAiReport(report);
-
-      console.log(
-        "GEMINI AI COGNITIVE REPORT:",
-        report
-      );
-    })
-    .catch((error) => {
-      console.error(
-        "AI cognitive report failed:",
-        error
-      );
-    });
+  const overallScore = calculateCognitiveOverallScore(gameHistory);
 
   setCognitiveProgress({
     overallScore,
@@ -421,6 +356,13 @@ const latestGameHistory = Array.from(
     if (unsubscribeReminders) {
       unsubscribeReminders();
     }
+
+    if (unsubscribePatientReport) {
+      unsubscribePatientReport();
+    }
+    if (unsubscribeSafetyAlert) {
+      unsubscribeSafetyAlert();
+    }
   };
 }, []);
 
@@ -430,25 +372,7 @@ const latestGameHistory = Array.from(
 
   const gameHistory =
     cognitiveProgress.gameHistory;
-
-  const memoryScore = useMemo(() => {
-    if (gameHistory.length === 0) {
-      return 0;
-    }
-
-    return Math.round(
-      gameHistory.reduce((total, game) => {
-        if (!game.maxScore) {
-          return total;
-        }
-
-        return (
-          total +
-          (game.score / game.maxScore) * 100
-        );
-      }, 0) / gameHistory.length
-    );
-  }, [gameHistory]);
+  const memoryScore = cognitiveProgress.overallScore;
 
   /* =========================================================
      HANDLERS
@@ -509,33 +433,21 @@ const latestGameHistory = Array.from(
     setIsReminderModalOpen(true);
   };
 
-  const handleTriggerSos = () => {
-    setPatient((previous) => ({
-      ...previous,
-      status: "Emergency",
-    }));
-
-    const newAlert: AlertItem = {
-      id: `sos_${Date.now()}`,
-      title: "Emergency SOS",
-      description: `Emergency check triggered for ${patient.fullName}.`,
-      type: "SOS",
-      severity: "critical",
-      timestamp: "Just now",
-      isResolved: false,
-      location: patient.lastKnownLocation,
-    };
-
-    setAlerts((previous) => [
-      newAlert,
-      ...previous,
-    ]);
-
+  const handleTriggerSos = async () => {
+    if (!assignedPatientId) throw new Error("No linked patient is available.");
+    await createOrActivateSosAlert(assignedPatientId, "caregiver");
     setActiveTab("alerts");
     setIsSosModalOpen(false);
   };
 
-  const handleResolveAlert = (id: string) => {
+  const handleResolveAlert = async (id: string) => {
+    if (id === ACTIVE_SOS_ALERT_ID) {
+      const caregiver = auth.currentUser;
+      if (!assignedPatientId || !caregiver) return;
+      await resolveSosAlert(assignedPatientId, caregiver.uid);
+      return;
+    }
+
     setAlerts((previous) => {
       const updated = previous.map((alert) =>
         alert.id === id
@@ -582,7 +494,7 @@ const latestGameHistory = Array.from(
 
   const HomeScreen = () => {
     return (
-      <div className="space-y-4 pb-20">
+      <div className="ms-caregiver-home space-y-4 pb-20">
 
         {/* Patient */}
         <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm">
@@ -716,31 +628,31 @@ const latestGameHistory = Array.from(
           onClick={() =>
             setActiveTab("memory_progress")
           }
-          className="bg-gradient-to-br from-teal-800 to-emerald-700 rounded-2xl p-4 text-white cursor-pointer shadow-md"
+          className="bg-white border border-slate-200 rounded-2xl p-4 text-slate-900 cursor-pointer shadow-sm"
         >
 
           <div className="flex items-center justify-between">
 
             <div className="flex items-center gap-3">
 
-              <div className="w-11 h-11 rounded-xl bg-white/15 flex items-center justify-center">
-                <Brain className="w-6 h-6" />
+              <div className="w-11 h-11 rounded-xl bg-emerald-50 flex items-center justify-center">
+                <Brain className="w-6 h-6 text-emerald-700" />
               </div>
 
               <div>
 
-                <p className="text-[10px] uppercase tracking-wide font-semibold text-emerald-100">
+                <p className="text-[10px] uppercase tracking-wide font-semibold text-emerald-800">
                   Cognitive AI Report
                 </p>
 
                 <div className="flex items-baseline gap-2">
 
                   <span className="text-3xl font-black">
-  {aiReport ? aiReport.overallScore : memoryScore}/100
+  {aiReport?.overallScore ?? memoryScore}/100
 </span>
 
-                  <span className="text-[10px] font-bold bg-white/20 px-2 py-1 rounded">
-                    {gameHistory.length} games
+                  <span className="text-[10px] font-bold bg-emerald-50 text-emerald-800 px-2 py-1 rounded">
+                    {aiReport?.totalSessions ?? aiReport?.sourceGameCount ?? gameHistory.length} sessions
                   </span>
 
                 </div>
@@ -749,14 +661,37 @@ const latestGameHistory = Array.from(
 
             </div>
 
-            <ChevronRight className="w-5 h-5 text-white/70" />
+            <ChevronRight className="w-5 h-5 text-slate-400" />
 
           </div>
 
-          <p className="text-xs text-emerald-100 mt-2">
+          <p className="text-xs text-slate-700 mt-2">
   {aiReport?.summary ||
-    "AI analysis based on the latest results from each completed cognitive game."}
+    "A personalized report will be available after more activity."}
 </p>
+          {aiReport?.strengths?.length > 0 && (
+            <p className="text-xs text-slate-600 mt-2">
+              Strengths: {aiReport.strengths.slice(0, 2).map((item: any) => typeof item === "string" ? item : item.observation).filter(Boolean).join(" ")}
+            </p>
+          )}
+          {aiReport?.areasToImprove?.length > 0 && (
+            <p className="text-xs text-slate-600 mt-1">
+              Practice areas: {aiReport.areasToImprove.slice(0, 2).map((item) => item.observation).join(" ")}
+            </p>
+          )}
+          {aiReport?.personalizedRecommendations?.length > 0 && (
+            <p className="text-xs text-slate-600 mt-1">
+              {aiReport.personalizedRecommendations[0]}
+            </p>
+          )}
+          {aiReport?.trendExplanation && (
+            <p className="text-xs text-slate-600 mt-1">{aiReport.trendExplanation}</p>
+          )}
+          {aiReport?.domainInsights?.slice(0, 2).map((insight) => (
+            <p key={insight.domain} className="text-xs text-slate-600 mt-1">
+              {insight.domain}: {insight.observation}
+            </p>
+          ))}
 
         </div>
 
@@ -807,7 +742,7 @@ const latestGameHistory = Array.from(
 
             <div className="space-y-2.5">
 
-              {gameHistory.map((game) => {
+              {gameHistory.slice(0, 10).map((game) => {
 
                 const percentage =
                   game.maxScore > 0
@@ -971,7 +906,7 @@ const latestGameHistory = Array.from(
      ========================================================= */
 
   return (
-    <div className="min-h-screen bg-slate-100 flex flex-col">
+    <div className="ms-app-shell ms-caregiver-shell min-h-screen bg-slate-100 flex flex-col overflow-x-hidden">
 
       <HeaderBar
         viewMode={viewMode}
@@ -984,7 +919,7 @@ const latestGameHistory = Array.from(
 
       {viewMode === "app" ? (
 
-        <div className="flex-1 flex flex-col items-center justify-center p-3 sm:p-6">
+        <div className="flex-1 min-h-0 flex flex-col items-center justify-center p-3 sm:p-6">
 
           <MobileFrame
             activeTab={activeTab}
@@ -1081,7 +1016,6 @@ const latestGameHistory = Array.from(
         }
         onConfirm={handleTriggerSos}
         patientName={patient.fullName}
-        location={patient.lastKnownLocation}
       />
 
       {/* Add Reminder */}
@@ -1096,16 +1030,6 @@ const latestGameHistory = Array.from(
           editingReminder
         }
       />
-
-      <button
-        onClick={async () => {
-          await signOut(auth);
-          window.location.reload();
-        }}
-        className="w-full py-4 mt-4 bg-red-50 border-2 border-red-200 text-red-600 text-lg font-bold rounded-2xl"
-      >
-        🚪 Logout
-      </button>
 
     </div>
 );

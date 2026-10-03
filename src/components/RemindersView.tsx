@@ -37,7 +37,7 @@ export const RemindersView: React.FC<RemindersViewProps> = ({
   return (
     <div className="space-y-4 pb-20">
       {/* Header & Add Button */}
-      <div className="flex items-center justify-between pt-1">
+      <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
         <div>
           <h2 className="text-xl font-extrabold text-slate-900 tracking-tight">
             Reminders & Schedule
@@ -49,7 +49,7 @@ export const RemindersView: React.FC<RemindersViewProps> = ({
         <button
           onClick={() => onOpenAddModal()}
           id="add-new-reminder-top-btn"
-          className="flex items-center gap-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-xs transition-colors"
+          className="min-h-11 flex items-center gap-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-xs transition-colors"
         >
           <Plus className="w-4 h-4" />
           <span>Add Reminder</span>
@@ -64,7 +64,7 @@ export const RemindersView: React.FC<RemindersViewProps> = ({
             <button
               key={cat}
               onClick={() => setFilter(cat)}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all border ${
+              className={`min-h-10 px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all border ${
                 isSelected
                   ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
                   : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
@@ -79,7 +79,7 @@ export const RemindersView: React.FC<RemindersViewProps> = ({
       {/* Reminders List */}
       <div className="space-y-2.5">
         {filtered.length === 0 ? (
-          <div className="bg-white rounded-2xl p-8 border border-slate-200 text-center">
+          <div className="ms-glass ms-glass--amber bg-white rounded-2xl p-8 border border-slate-200 text-center">
             <Clock className="w-10 h-10 text-slate-300 mx-auto mb-2" />
             <p className="text-sm font-bold text-slate-700">No {filter} Reminders</p>
             <p className="text-xs text-slate-500 mt-1">
@@ -94,7 +94,7 @@ export const RemindersView: React.FC<RemindersViewProps> = ({
             return (
               <div
                 key={item.id}
-                className={`bg-white rounded-2xl p-3.5 border transition-all ${
+                className={`ms-glass ${item.isCompleted ? "ms-glass--green" : "ms-glass--amber"} bg-white rounded-2xl p-3.5 border transition-all ${
                   item.isCompleted
                     ? 'border-emerald-200 bg-emerald-50/30'
                     : 'border-slate-200 shadow-xs'
@@ -104,7 +104,7 @@ export const RemindersView: React.FC<RemindersViewProps> = ({
                   {/* Checkbox toggle */}
                   <button
                     onClick={() => onToggleReminder(item.id)}
-                    className="mt-0.5 text-emerald-600 hover:scale-110 transition-transform shrink-0"
+                    className="mt-0.5 min-h-11 min-w-11 flex items-center justify-center rounded-full text-emerald-700 hover:bg-emerald-50 transition-colors shrink-0"
                   >
                     {item.isCompleted ? (
                       <CheckCircle2 className="w-5 h-5 fill-emerald-100 text-emerald-600" />
@@ -154,14 +154,14 @@ export const RemindersView: React.FC<RemindersViewProps> = ({
                       <div className="flex items-center gap-2">
                         <button
                           onClick={() => onOpenAddModal(item)}
-                          className="text-slate-400 hover:text-slate-700 p-1"
+                          className="min-h-10 min-w-10 inline-flex items-center justify-center rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-50"
                           title="Edit"
                         >
                           <Edit2 className="w-3.5 h-3.5" />
                         </button>
                         <button
                           onClick={() => onDeleteReminder(item.id)}
-                          className="text-slate-400 hover:text-rose-600 p-1"
+                          className="min-h-10 min-w-10 inline-flex items-center justify-center rounded-lg text-slate-500 hover:text-rose-600 hover:bg-rose-50"
                           title="Delete"
                         >
                           <Trash2 className="w-3.5 h-3.5" />

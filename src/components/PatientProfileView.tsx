@@ -15,10 +15,10 @@ export const PatientProfileView: React.FC<PatientProfileViewProps> = ({
   progress,
 }) => {
   return (
-    <div className="space-y-4 pb-6">
+    <div className="space-y-4 pb-20">
 
       {/* Header */}
-      <div>
+      <div className="pt-1">
         <h2 className="text-xl font-extrabold text-slate-900">
           Patient Profile
         </h2>
@@ -53,33 +53,33 @@ export const PatientProfileView: React.FC<PatientProfileViewProps> = ({
       </div>
 
       {/* Cognitive Summary */}
-      <div className="bg-gradient-to-br from-teal-800 to-emerald-700 rounded-2xl p-4 text-white shadow-md">
+      <div className="ms-glass ms-glass--purple border border-slate-200 border-l-4 border-l-violet-400 rounded-2xl p-4 text-slate-900 shadow-sm">
 
         <div className="flex items-center gap-3">
 
-          <div className="w-11 h-11 rounded-xl bg-white/15 flex items-center justify-center">
-            <Brain className="w-6 h-6" />
+          <div className="w-11 h-11 rounded-xl bg-emerald-50 flex items-center justify-center">
+            <Brain className="w-6 h-6 text-emerald-700" />
           </div>
 
           <div>
-            <p className="text-[10px] uppercase font-semibold text-emerald-100">
+            <p className="text-[10px] uppercase font-semibold text-emerald-800">
               Cognitive Score
             </p>
 
-            <p className="text-3xl font-black">
+            <p className="text-3xl font-black text-slate-900">
               {progress.overallScore}/100
             </p>
           </div>
 
         </div>
 
-        <p className="text-xs text-emerald-100 mt-2">
+        <p className="text-xs text-slate-600 mt-2">
           {progress.statusDescription}
         </p>
       </div>
 
       {/* Recent Game Results */}
-      <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm">
+      <div className="ms-glass ms-glass--blue bg-white rounded-2xl p-4 border border-slate-200 shadow-sm">
 
         <div className="flex items-center gap-2 mb-3">
 
@@ -169,9 +169,10 @@ export const PatientProfileView: React.FC<PatientProfileViewProps> = ({
           await signOut(auth);
           window.location.reload();
         }}
-        className="w-full py-4 bg-red-50 border-2 border-red-200 text-red-600 text-base font-bold rounded-2xl"
+        className="w-full min-h-12 flex items-center justify-center gap-2 border border-red-200 bg-red-50 hover:bg-red-100 text-red-600 text-sm font-bold rounded-2xl transition-colors"
       >
-        🚪 Logout
+        <span>🚪</span>
+        <span>Logout</span>
       </button>
 
     </div>
